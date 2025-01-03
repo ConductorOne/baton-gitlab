@@ -2,19 +2,24 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"io"
 
+	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 )
 
-type Connector struct{}
+type Connector struct {
+	Client *gitlab.Client
+}
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
 	return []connectorbuilder.ResourceSyncer{
 		newUserBuilder(),
+		newGroupBuilder(d.Client),
 	}
 }
 
@@ -39,6 +44,13 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context) (*Connector, error) {
-	return &Connector{}, nil
+func New(ctx context.Context, accessToken string) (*Connector, error) {
+	client, err := gitlab.NewClient(ctx, accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("error creating gitlab client: %w", err)
+	}
+
+	return &Connector{
+		Client: client,
+	}, nil
 }
