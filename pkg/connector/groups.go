@@ -2,7 +2,7 @@ package connector
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -19,7 +19,7 @@ type groupBuilder struct {
 
 const groupMembership = "member"
 
-func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
 	return resourceSdk.NewGroupResource(
 		group.Name,
 		groupResourceType,
@@ -32,7 +32,9 @@ func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2
 				},
 			),
 		},
-		resourceSdk.WithParentResourceID(parentResourceID),
+		resourceSdk.WithAnnotation(
+			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+		),
 	)
 }
 
@@ -40,30 +42,38 @@ func (o *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return groupResourceType
 }
 
-// TODO: check rate limiting
-// TODO: check pagination
-// TODO: check list
 func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	groups, res, _, err := o.ListGroups(ctx, pToken.Token)
+
+	var groups []*gitlabSDK.Group
+	var res *gitlabSDK.Response
+	var err error
+
+	if pToken.Token == "" {
+		groups, res, err = o.ListGroups(ctx, pToken.Token)
+		if err != nil {
+			return nil, "", nil, err
+		}
+	} else {
+		groups, res, err = o.ListGroupsPaginate(ctx, pToken.Token)
+	}
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("gitlab-connector: ListGroups failed: %w", err)
+		return nil, "", nil, err
 	}
 
 	outResources := make([]*v2.Resource, 0, len(groups))
 	for _, group := range groups {
-		resource, err := groupResource(group, parentResourceID)
+		resource, err := groupResource(group)
 		if err != nil {
 			return nil, "", nil, err
 		}
 		outResources = append(outResources, resource)
 	}
 
-	var cursor string
-	if res.NextLink != "" {
-		cursor = res.NextLink
+	var nextPage string
+	if res.NextPage != 0 {
+		nextPage = strconv.Itoa(res.NextPage)
 	}
-
-	return outResources, cursor, nil, nil
+	return outResources, nextPage, nil, nil
 }
 
 // Entitlements always returns an empty slice for roles.
