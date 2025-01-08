@@ -9,6 +9,7 @@ import (
 )
 
 const DefaultGroupLimit = 2
+const DefaultGroupMembersLimit = 2
 
 func (o *Client) ListGroups(ctx context.Context, nextPageStr string) ([]*gitlabSDK.Group, *gitlabSDK.Response, error) {
 	groups, res, err := o.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
@@ -67,4 +68,60 @@ func (o *Client) ListGroupsPaginate(ctx context.Context, nextPageStr string) ([]
 	}
 
 	return groups, res, nil
+}
+
+func (o *Client) ListGroupMembers(ctx context.Context, groupId string) ([]*gitlabSDK.GroupMember, *gitlabSDK.Response, error) {
+	users, res, err := o.Groups.ListGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
+		ListOptions: gitlabSDK.ListOptions{
+			PerPage: DefaultGroupMembersLimit,
+		},
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+	if err != nil {
+		return nil, res, err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, res, err
+	}
+
+	return users, res, nil
+}
+
+func (o *Client) ListGroupMembersPaginate(ctx context.Context, groupId string, nextPageStr string) ([]*gitlabSDK.GroupMember, *gitlabSDK.Response, error) {
+	if nextPageStr == "" {
+		return nil, nil, fmt.Errorf("gitlab-connector: no page given for pagination")
+	}
+
+	var nextPage int
+	var err error
+
+	if nextPageStr != "" {
+		nextPage, err = strconv.Atoi(nextPageStr)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if nextPage < 1 {
+		return nil, nil, fmt.Errorf("gitlab-connector: invalid page given for pagination: %d", nextPage)
+	}
+	users, res, err := o.Groups.ListGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
+		ListOptions: gitlabSDK.ListOptions{
+			Page:    nextPage,
+			PerPage: DefaultGroupMembersLimit,
+		},
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+	if err != nil {
+		return nil, res, err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, res, err
+	}
+
+	return users, res, nil
 }
