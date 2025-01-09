@@ -24,6 +24,7 @@ func (o *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var id int
 	var email string
+	var username string
 	var name string
 	var accessLevel int
 
@@ -32,11 +33,13 @@ func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, erro
 		id = user.ID
 		email = user.Email
 		name = user.Name
+		username = user.Username
 		accessLevel = int(user.AccessLevel)
 	case *gitlabSDK.ProjectMember:
 		id = user.ID
 		email = user.Email
 		name = user.Name
+		username = user.Username
 		accessLevel = int(user.AccessLevel)
 	default:
 		return nil, fmt.Errorf("unknown user type: %T", user)
@@ -57,7 +60,7 @@ func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, erro
 	}
 
 	return resourceSdk.NewUserResource(
-		name,
+		username,
 		userResourceType,
 		id,
 		userTraitOptions,
