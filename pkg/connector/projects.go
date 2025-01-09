@@ -20,8 +20,6 @@ type projectBuilder struct {
 	*gitlab.Client
 }
 
-const projectMembership = "member"
-
 func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	return resourceSdk.NewGroupResource(
 		project.Name,
@@ -85,7 +83,6 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 
 // Entitlements always returns an empty slice for roles.
 func (o *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
-
 	levels := []gitlabSDK.AccessLevelValue{
 		gitlabSDK.MinimalAccessPermissions,
 		gitlabSDK.GuestPermissions,
@@ -157,9 +154,32 @@ func (r *projectBuilder) Grant(
 	annotations.Annotations,
 	error,
 ) {
+	projectId := entitlement.Resource.Id.Resource
+	accessLevel := AccessLevel(entitlement.Slug)
+	userId, err := strconv.Atoi(principal.Id.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+	}
+
+	_, err = r.AddProjectMember(ctx, projectId, userId, accessLevel)
+
+	if err != nil {
+		return nil, fmt.Errorf("error adding user to group: %w", err)
+	}
 	return nil, nil
 }
 
 func (r *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	projectId := grant.Entitlement.Resource.Id.Resource
+	userId, err := strconv.Atoi(grant.Principal.Id.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+	}
+
+	err = r.RemoveProjectMember(ctx, projectId, userId)
+	if err != nil {
+		return nil, fmt.Errorf("error removing user from group: %w", err)
+	}
+
 	return nil, nil
 }

@@ -8,14 +8,9 @@ import (
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
-const DefaultProjectLimit = 2
-const DefaultProjectMembersLimit = 2
-
 func (o *Client) ListProjects(ctx context.Context, groupId, nextPageStr string) ([]*gitlabSDK.Project, *gitlabSDK.Response, error) {
 	projects, res, err := o.Groups.ListGroupProjects(groupId, &gitlabSDK.ListGroupProjectsOptions{
-		ListOptions: gitlabSDK.ListOptions{
-			PerPage: DefaultProjectLimit,
-		},
+		ListOptions: gitlabSDK.ListOptions{},
 	},
 		gitlabSDK.WithContext(ctx),
 	)
@@ -52,8 +47,7 @@ func (o *Client) ListProjectsPaginate(ctx context.Context, groupId, nextPageStr 
 
 	projects, res, err := o.Groups.ListGroupProjects(groupId, &gitlabSDK.ListGroupProjectsOptions{
 		ListOptions: gitlabSDK.ListOptions{
-			Page:    nextPage,
-			PerPage: DefaultProjectLimit,
+			Page: nextPage,
 		},
 	},
 		gitlabSDK.WithContext(ctx),
@@ -71,11 +65,8 @@ func (o *Client) ListProjectsPaginate(ctx context.Context, groupId, nextPageStr 
 }
 
 func (o *Client) ListProjectMembers(ctx context.Context, projectId string) ([]*gitlabSDK.ProjectMember, *gitlabSDK.Response, error) {
-
 	users, res, err := o.ProjectMembers.ListAllProjectMembers(projectId, &gitlabSDK.ListProjectMembersOptions{
-		ListOptions: gitlabSDK.ListOptions{
-			PerPage: DefaultGroupMembersLimit,
-		},
+		ListOptions: gitlabSDK.ListOptions{},
 	},
 		gitlabSDK.WithContext(ctx),
 	)
@@ -110,8 +101,7 @@ func (o *Client) ListProjectMembersPaginate(ctx context.Context, projectId, next
 	}
 	users, res, err := o.ProjectMembers.ListAllProjectMembers(projectId, &gitlabSDK.ListProjectMembersOptions{
 		ListOptions: gitlabSDK.ListOptions{
-			Page:    nextPage,
-			PerPage: DefaultProjectMembersLimit,
+			Page: nextPage,
 		},
 	},
 		gitlabSDK.WithContext(ctx),
@@ -125,4 +115,39 @@ func (o *Client) ListProjectMembersPaginate(ctx context.Context, projectId, next
 	}
 
 	return users, res, nil
+}
+
+func (o *Client) AddProjectMember(ctx context.Context, projectId string, userId int, accessLevel gitlabSDK.AccessLevelValue) (*gitlabSDK.ProjectMember, error) {
+	user, res, err := o.ProjectMembers.AddProjectMember(projectId, &gitlabSDK.AddProjectMemberOptions{
+		UserID:      gitlabSDK.Ptr(userId),
+		AccessLevel: gitlabSDK.Ptr(accessLevel),
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (o *Client) RemoveProjectMember(ctx context.Context, projectId string, userId int) error {
+	res, err := o.ProjectMembers.DeleteProjectMember(projectId, userId,
+		gitlabSDK.WithContext(ctx),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return err
+	}
+
+	return nil
 }

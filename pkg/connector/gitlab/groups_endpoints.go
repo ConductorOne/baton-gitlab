@@ -8,14 +8,9 @@ import (
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
-const DefaultGroupLimit = 2
-const DefaultGroupMembersLimit = 2
-
 func (o *Client) ListGroups(ctx context.Context, nextPageStr string) ([]*gitlabSDK.Group, *gitlabSDK.Response, error) {
 	groups, res, err := o.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
-		ListOptions: gitlabSDK.ListOptions{
-			PerPage: DefaultGroupLimit,
-		},
+		ListOptions: gitlabSDK.ListOptions{},
 	},
 		gitlabSDK.WithContext(ctx),
 	)
@@ -52,8 +47,7 @@ func (o *Client) ListGroupsPaginate(ctx context.Context, nextPageStr string) ([]
 
 	groups, res, err := o.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
 		ListOptions: gitlabSDK.ListOptions{
-			Page:    nextPage,
-			PerPage: DefaultGroupLimit,
+			Page: nextPage,
 		},
 	},
 		gitlabSDK.WithContext(ctx),
@@ -72,9 +66,7 @@ func (o *Client) ListGroupsPaginate(ctx context.Context, nextPageStr string) ([]
 
 func (o *Client) ListGroupMembers(ctx context.Context, groupId string) ([]*gitlabSDK.GroupMember, *gitlabSDK.Response, error) {
 	users, res, err := o.Groups.ListGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
-		ListOptions: gitlabSDK.ListOptions{
-			PerPage: DefaultGroupMembersLimit,
-		},
+		ListOptions: gitlabSDK.ListOptions{},
 	},
 		gitlabSDK.WithContext(ctx),
 	)
@@ -109,8 +101,7 @@ func (o *Client) ListGroupMembersPaginate(ctx context.Context, groupId string, n
 	}
 	users, res, err := o.Groups.ListGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
 		ListOptions: gitlabSDK.ListOptions{
-			Page:    nextPage,
-			PerPage: DefaultGroupMembersLimit,
+			Page: nextPage,
 		},
 	},
 		gitlabSDK.WithContext(ctx),
@@ -124,4 +115,40 @@ func (o *Client) ListGroupMembersPaginate(ctx context.Context, groupId string, n
 	}
 
 	return users, res, nil
+}
+
+func (o *Client) AddGroupMember(ctx context.Context, groupId string, userId int, accessLevel gitlabSDK.AccessLevelValue) error {
+	_, res, err := o.GroupMembers.AddGroupMember(groupId, &gitlabSDK.AddGroupMemberOptions{
+		UserID:      gitlabSDK.Ptr(userId),
+		AccessLevel: gitlabSDK.Ptr(accessLevel),
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return err
+	}
+
+	return nil
+}
+
+func (o *Client) RemoveGroupMember(ctx context.Context, groupId string, userId int) error {
+	res, err := o.GroupMembers.RemoveGroupMember(groupId, userId,
+		&gitlabSDK.RemoveGroupMemberOptions{},
+		gitlabSDK.WithContext(ctx),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return err
+	}
+
+	return nil
 }

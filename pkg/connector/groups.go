@@ -19,8 +19,6 @@ type groupBuilder struct {
 	*gitlab.Client
 }
 
-const groupMembership = "member"
-
 func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
 	return resourceSdk.NewGroupResource(
 		group.Name,
@@ -46,7 +44,6 @@ func (o *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 }
 
 func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-
 	var groups []*gitlabSDK.Group
 	var res *gitlabSDK.Response
 	var err error
@@ -82,7 +79,7 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 func AccessLevelString(level gitlabSDK.AccessLevelValue) string {
 	switch level {
 	case gitlabSDK.NoPermissions:
-		return "No Permissions"
+		return "None"
 	case gitlabSDK.MinimalAccessPermissions:
 		return "Minimal"
 	case gitlabSDK.GuestPermissions:
@@ -97,8 +94,30 @@ func AccessLevelString(level gitlabSDK.AccessLevelValue) string {
 		return "Owner"
 	case gitlabSDK.AdminPermissions:
 		return "Admin"
+	}
+	return ""
+}
+
+func AccessLevel(level string) gitlabSDK.AccessLevelValue {
+	switch level {
+	case "None":
+		return gitlabSDK.NoPermissions
+	case "Minimal":
+		return gitlabSDK.MinimalAccessPermissions
+	case "Guest":
+		return gitlabSDK.GuestPermissions
+	case "Reporter":
+		return gitlabSDK.ReporterPermissions
+	case "Developer":
+		return gitlabSDK.DeveloperPermissions
+	case "Maintainer":
+		return gitlabSDK.MaintainerPermissions
+	case "Owner":
+		return gitlabSDK.OwnerPermissions
+	case "Admin":
+		return gitlabSDK.AdminPermissions
 	default:
-		return "Unknown"
+		return gitlabSDK.NoPermissions
 	}
 }
 
@@ -175,9 +194,31 @@ func (r *groupBuilder) Grant(
 	annotations.Annotations,
 	error,
 ) {
+	groupId := entitlement.Resource.Id.Resource
+	accessLevel := AccessLevel(entitlement.Slug)
+	userId, err := strconv.Atoi(principal.Id.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+	}
+
+	err = r.AddGroupMember(ctx, groupId, userId, accessLevel)
+	if err != nil {
+		return nil, fmt.Errorf("error adding user to group: %w", err)
+	}
 	return nil, nil
 }
 
 func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	groupId := grant.Entitlement.Resource.Id.Resource
+	userId, err := strconv.Atoi(grant.Principal.Id.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+	}
+
+	err = r.RemoveGroupMember(ctx, groupId, userId)
+	if err != nil {
+		return nil, fmt.Errorf("error removing user from group: %w", err)
+	}
+
 	return nil, nil
 }
