@@ -4,7 +4,6 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 )
 
-// TODO: remove this?
 // The user resource type is for all user objects from the database.
 var userResourceType = &v2.ResourceType{
 	Id:          "user",
