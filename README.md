@@ -38,6 +38,8 @@ baton resources
 
 `baton-gitlab` will pull down information about the following resources:
 - Users
+- Groups
+- Projects
 
 # Contributing, Support and Issues
 
@@ -65,6 +67,8 @@ Available Commands:
 Flags:
       --client-id string             The client ID used to authenticate with ConductorOne ($BATON_CLIENT_ID)
       --client-secret string         The client secret used to authenticate with ConductorOne ($BATON_CLIENT_SECRET)
+      --access-token string          The access token used to authenticate with the GitLab API ($BATON_ACCESS_TOKEN)
+      --base-url string              The base URL for the GitLab API ($BATON_BASE_URL) (default "https://gitlab.com/")
   -f, --file string                  The path to the c1z file to sync with ($BATON_FILE) (default "sync.c1z")
   -h, --help                         help for baton-gitlab
       --log-format string            The output format for logs: json, console ($BATON_LOG_FORMAT) (default "json")
