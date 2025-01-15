@@ -6,10 +6,25 @@ import (
 )
 
 var (
+	AccessToken = field.StringField(
+		"access-token",
+		field.WithDescription("The access token to authenticate with the GitLab API"),
+		field.WithRequired(true),
+	)
+	BaseURL = field.StringField(
+		"base-url",
+		field.WithDescription("The base URL of the GitLab instance"),
+		field.WithDefaultValue("https://gitlab.com/"),
+		field.WithRequired(false),
+	)
+
 	// ConfigurationFields defines the external configuration required for the
 	// connector to run. Note: these fields can be marked as optional or
 	// required.
-	ConfigurationFields = []field.SchemaField{}
+	ConfigurationFields = []field.SchemaField{
+		AccessToken,
+		BaseURL,
+	}
 
 	// FieldRelationships defines relationships between the fields listed in
 	// ConfigurationFields that can be automatically validated. For example, a
