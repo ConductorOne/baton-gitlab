@@ -49,10 +49,7 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 	var err error
 
 	if pToken.Token == "" {
-		groups, res, err = o.ListGroups(ctx, pToken.Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
+		groups, res, err = o.ListGroups(ctx)
 	} else {
 		groups, res, err = o.ListGroupsPaginate(ctx, pToken.Token)
 	}

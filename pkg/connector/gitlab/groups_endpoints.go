@@ -8,7 +8,7 @@ import (
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
-func (o *Client) ListGroups(ctx context.Context, nextPageStr string) ([]*gitlabSDK.Group, *gitlabSDK.Response, error) {
+func (o *Client) ListGroups(ctx context.Context) ([]*gitlabSDK.Group, *gitlabSDK.Response, error) {
 	groups, res, err := o.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
 		ListOptions: gitlabSDK.ListOptions{},
 	},

@@ -54,10 +54,7 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 	var err error
 
 	if pToken.Token == "" {
-		projects, res, err = o.ListProjects(ctx, parentResourceID.Resource, pToken.Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
+		projects, res, err = o.ListProjects(ctx, parentResourceID.Resource)
 	} else {
 		projects, res, err = o.ListProjectsPaginate(ctx, parentResourceID.Resource, pToken.Token)
 	}
