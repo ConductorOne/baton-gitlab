@@ -11,14 +11,14 @@ type Client struct {
 	*gitlabSDK.Client
 }
 
-func NewClient(ctx context.Context, accessToken string) (*Client, error) {
+func NewClient(ctx context.Context, accessToken, baseURL string) (*Client, error) {
 	httpClient, err := uhttp.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	client, err := gitlabSDK.NewClient(accessToken,
-		gitlabSDK.WithBaseURL(BaseURL),
+		gitlabSDK.WithBaseURL(baseURL),
 		gitlabSDK.WithHTTPClient(httpClient),
 	)
 	if err != nil {
