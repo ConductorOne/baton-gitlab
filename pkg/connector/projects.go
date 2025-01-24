@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -21,8 +22,9 @@ type projectBuilder struct {
 }
 
 func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	groupName := strings.Split(parentResourceID.Resource, "/")[1]
 	return resourceSdk.NewGroupResource(
-		project.Name,
+		groupName+"/"+project.Name,
 		projectResourceType,
 		project.ID,
 		[]resourceSdk.GroupTraitOption{
@@ -53,10 +55,11 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 	var res *gitlabSDK.Response
 	var err error
 
+	groupId := strings.Split(parentResourceID.Resource, "/")[0]
 	if pToken.Token == "" {
-		projects, res, err = o.ListProjects(ctx, parentResourceID.Resource)
+		projects, res, err = o.ListProjects(ctx, groupId)
 	} else {
-		projects, res, err = o.ListProjectsPaginate(ctx, parentResourceID.Resource, pToken.Token)
+		projects, res, err = o.ListProjectsPaginate(ctx, groupId, pToken.Token)
 	}
 	if err != nil {
 		return nil, "", nil, err

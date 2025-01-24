@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -23,7 +24,7 @@ func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
 	return resourceSdk.NewGroupResource(
 		group.Name,
 		groupResourceType,
-		group.ID,
+		strconv.Itoa(group.ID)+"/"+group.Name,
 		[]resourceSdk.GroupTraitOption{
 			resourceSdk.WithGroupProfile(
 				map[string]interface{}{
@@ -148,10 +149,11 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	var users []*gitlabSDK.GroupMember
 	var res *gitlabSDK.Response
 	var err error
+	groupId := strings.Split(resource.Id.Resource, "/")[0]
 	if pToken.Token == "" {
-		users, res, err = o.ListGroupMembers(ctx, resource.Id.Resource)
+		users, res, err = o.ListGroupMembers(ctx, groupId)
 	} else {
-		users, res, err = o.ListGroupMembersPaginate(ctx, resource.Id.Resource, pToken.Token)
+		users, res, err = o.ListGroupMembersPaginate(ctx, groupId, pToken.Token)
 	}
 	if err != nil {
 		return nil, "", nil, err
@@ -191,7 +193,8 @@ func (r *groupBuilder) Grant(
 	annotations.Annotations,
 	error,
 ) {
-	groupId := entitlement.Resource.Id.Resource
+	groupIdAndName := entitlement.Resource.Id.Resource
+	groupId := strings.Split(groupIdAndName, "/")[0]
 	accessLevel := AccessLevel(entitlement.Slug)
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
@@ -206,7 +209,9 @@ func (r *groupBuilder) Grant(
 }
 
 func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	groupId := grant.Entitlement.Resource.Id.Resource
+	groupIdAndName := grant.Entitlement.Resource.Id.Resource
+	groupId := strings.Split(groupIdAndName, "/")[0]
+
 	userId, err := strconv.Atoi(grant.Principal.Id.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("error converting user ID to int: %w", err)

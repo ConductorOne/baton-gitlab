@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -49,6 +50,7 @@ func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, erro
 		"id":           id,
 		"email":        email,
 		"first_name":   name,
+		"username":     username,
 		"access_level": accessLevel,
 	}
 
@@ -60,7 +62,7 @@ func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, erro
 	}
 
 	return resourceSdk.NewUserResource(
-		username,
+		name,
 		userResourceType,
 		id,
 		userTraitOptions,
@@ -82,10 +84,11 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	var groupMembers []*gitlabSDK.GroupMember
 
 	if parentResourceID.ResourceType == groupResourceType.Id {
+		groupId := strings.Split(parentResourceID.Resource, "/")[0]
 		if pToken.Token == "" {
-			groupMembers, res, err = o.ListGroupMembers(ctx, parentResourceID.Resource)
+			groupMembers, res, err = o.ListGroupMembers(ctx, groupId)
 		} else {
-			groupMembers, res, err = o.ListGroupMembersPaginate(ctx, parentResourceID.Resource, pToken.Token)
+			groupMembers, res, err = o.ListGroupMembersPaginate(ctx, groupId, pToken.Token)
 		}
 	}
 	if err != nil {
