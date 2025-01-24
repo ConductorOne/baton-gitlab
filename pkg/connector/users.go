@@ -24,21 +24,26 @@ func (o *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 
 func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var id int
+	// NOTE: The email attribute is only visible to group owners for enterprise users of the group when an API request is sent to the group itself, or that group’s subgroups or projects.
+	// https://docs.gitlab.com/ee/api/members.html#known-issues
 	var email string
 	var username string
 	var name string
+	var state string
 	var accessLevel int
 
 	switch user := user.(type) {
 	case *gitlabSDK.GroupMember:
 		id = user.ID
 		email = user.Email
+		state = user.State
 		name = user.Name
 		username = user.Username
 		accessLevel = int(user.AccessLevel)
 	case *gitlabSDK.ProjectMember:
 		id = user.ID
 		email = user.Email
+		state = user.State
 		name = user.Name
 		username = user.Username
 		accessLevel = int(user.AccessLevel)
@@ -47,11 +52,12 @@ func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, erro
 	}
 
 	profile := map[string]interface{}{
-		"id":           id,
-		"email":        email,
 		"first_name":   name,
 		"username":     username,
+		"email":        email,
+		"state":        state,
 		"access_level": accessLevel,
+		"id":           id,
 	}
 
 	userTraitOptions := []resourceSdk.UserTraitOption{
