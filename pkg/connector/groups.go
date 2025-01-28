@@ -21,16 +21,21 @@ type groupBuilder struct {
 }
 
 func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
+	profile := map[string]interface{}{
+		"id":   group.ID,
+		"name": group.Name,
+	}
+	if group.ParentID != 0 {
+		profile["parent_group_id"] = group.ParentID
+	}
+
 	return resourceSdk.NewGroupResource(
 		group.Name,
 		groupResourceType,
 		strconv.Itoa(group.ID)+"/"+group.Name,
 		[]resourceSdk.GroupTraitOption{
 			resourceSdk.WithGroupProfile(
-				map[string]interface{}{
-					"id":   group.ID,
-					"name": group.Name,
-				},
+				profile,
 			),
 		},
 		resourceSdk.WithAnnotation(
