@@ -24,6 +24,8 @@ jobs:
         run: go build -o connector ./cmd/baton-gitlab
 
       - name: Run and save output
+        env:
+          BATON_ACCESS_TOKEN: "${{ secrets.BATON_ACCESS_TOKEN }}"
         run: ./connector capabilities > baton_capabilities.json
 
       - name: Commit changes

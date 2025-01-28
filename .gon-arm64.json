@@ -1,5 +1,5 @@
 {
-  "source": ["./dist/macos-arm64_darwin_arm64/baton-gitlab"],
+  "source": ["./dist/macos-arm64_darwin_arm64_v8.0/baton-gitlab"],
   "bundle_id": "com.conductorone.baton-gitlab",
   "apple_id": {
     "username" : "justin.gallardo@conductorone.com"
