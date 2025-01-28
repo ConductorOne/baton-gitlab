@@ -76,6 +76,36 @@ func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, erro
 	)
 }
 
+func (o *userBuilder) setEmailsGroupMembers(ctx context.Context, users []*gitlabSDK.GroupMember) []*gitlabSDK.GroupMember {
+	for i, user := range users {
+		details, _, err := o.Users.GetUser(user.ID, gitlabSDK.GetUsersOptions{}, gitlabSDK.WithContext(ctx))
+		if err == nil {
+			if details.PublicEmail != "" {
+				users[i].Email = details.PublicEmail
+			}
+			if details.Email != "" {
+				users[i].Email = details.Email
+			}
+		}
+	}
+	return users
+}
+
+func (o *userBuilder) setEmailsProjectMembers(ctx context.Context, users []*gitlabSDK.ProjectMember) []*gitlabSDK.ProjectMember {
+	for i, user := range users {
+		details, _, err := o.Users.GetUser(user.ID, gitlabSDK.GetUsersOptions{}, gitlabSDK.WithContext(ctx))
+		if err == nil {
+			if details.PublicEmail != "" {
+				users[i].Email = details.PublicEmail
+			}
+			if details.Email != "" {
+				users[i].Email = details.Email
+			}
+		}
+	}
+	return users
+}
+
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
@@ -101,6 +131,7 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		return nil, "", nil, err
 	}
 
+	groupMembers = o.setEmailsGroupMembers(ctx, groupMembers)
 	for _, member := range groupMembers {
 		users = append(users, member)
 	}
@@ -117,6 +148,7 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		return nil, "", nil, err
 	}
 
+	projectMembers = o.setEmailsProjectMembers(ctx, projectMembers)
 	for _, member := range projectMembers {
 		users = append(users, member)
 	}
