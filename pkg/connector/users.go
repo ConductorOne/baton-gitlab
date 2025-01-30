@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -120,7 +119,10 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	var groupMembers []*gitlabSDK.GroupMember
 
 	if parentResourceID.ResourceType == groupResourceType.Id {
-		groupId := strings.Split(parentResourceID.Resource, "/")[0]
+		groupId, _, err := fromGroupResourceId(parentResourceID.Resource)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
+		}
 		if pToken.Token == "" {
 			groupMembers, res, err = o.ListGroupMembers(ctx, groupId)
 		} else {
