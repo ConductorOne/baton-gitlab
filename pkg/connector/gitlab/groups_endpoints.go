@@ -65,7 +65,7 @@ func (o *Client) ListGroupsPaginate(ctx context.Context, nextPageStr string) ([]
 }
 
 func (o *Client) ListGroupMembers(ctx context.Context, groupId string) ([]*gitlabSDK.GroupMember, *gitlabSDK.Response, error) {
-	users, res, err := o.Groups.ListGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
+	users, res, err := o.Groups.ListAllGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
 		ListOptions: gitlabSDK.ListOptions{},
 	},
 		gitlabSDK.WithContext(ctx),
@@ -99,7 +99,7 @@ func (o *Client) ListGroupMembersPaginate(ctx context.Context, groupId string, n
 	if nextPage < 1 {
 		return nil, nil, fmt.Errorf("gitlab-connector: invalid page given for pagination: %d", nextPage)
 	}
-	users, res, err := o.Groups.ListGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
+	users, res, err := o.Groups.ListAllGroupMembers(groupId, &gitlabSDK.ListGroupMembersOptions{
 		ListOptions: gitlabSDK.ListOptions{
 			Page: nextPage,
 		},

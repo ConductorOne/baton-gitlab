@@ -27,8 +27,8 @@ jobs:
       BATON_LOG_LEVEL: debug
 
       # Connector-specific details
-      CONNECTOR_GRANT: 'group:100021949:Maintainer:user:25334081'
-      CONNECTOR_ENTITLEMENT: 'group:100021949:Maintainer'
+      CONNECTOR_GRANT: 'group:100021949/c1-test-group3:Maintainer:user:25334081'
+      CONNECTOR_ENTITLEMENT: 'group:100021949/c1-test-group3:Maintainer'
       CONNECTOR_PRINCIPAL: '25334081'
       CONNECTOR_PRINCIPAL_TYPE: 'user'
 
