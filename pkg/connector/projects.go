@@ -32,8 +32,9 @@ func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId
 		[]resourceSdk.GroupTraitOption{
 			resourceSdk.WithGroupProfile(
 				map[string]interface{}{
-					"id":   project.ID,
-					"name": project.Name,
+					"id":          project.ID,
+					"name":        project.Name,
+					"description": project.Description,
 				},
 			),
 		},
