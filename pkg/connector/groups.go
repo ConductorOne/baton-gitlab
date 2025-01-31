@@ -21,8 +21,9 @@ type groupBuilder struct {
 
 func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
 	profile := map[string]interface{}{
-		"id":   group.ID,
-		"name": group.Name,
+		"id":          group.ID,
+		"name":        group.Name,
+		"description": group.Description,
 	}
 	if group.ParentID != 0 {
 		profile["parent_group_id"] = group.ParentID
