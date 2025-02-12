@@ -2,8 +2,11 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -17,6 +20,15 @@ import (
 
 type groupBuilder struct {
 	*gitlab.Client
+}
+
+var accessLevels = []gitlabSDK.AccessLevelValue{
+	gitlabSDK.MinimalAccessPermissions,
+	gitlabSDK.GuestPermissions,
+	gitlabSDK.ReporterPermissions,
+	gitlabSDK.DeveloperPermissions,
+	gitlabSDK.MaintainerPermissions,
+	gitlabSDK.OwnerPermissions,
 }
 
 func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
@@ -124,19 +136,9 @@ func AccessLevel(level string) gitlabSDK.AccessLevelValue {
 	}
 }
 
-// Entitlements always returns an empty slice for roles.
 func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
-	levels := []gitlabSDK.AccessLevelValue{
-		gitlabSDK.MinimalAccessPermissions,
-		gitlabSDK.GuestPermissions,
-		gitlabSDK.ReporterPermissions,
-		gitlabSDK.DeveloperPermissions,
-		gitlabSDK.MaintainerPermissions,
-		gitlabSDK.OwnerPermissions,
-	}
-
-	rv := make([]*v2.Entitlement, 0, len(levels))
-	for _, level := range levels {
+	rv := make([]*v2.Entitlement, 0, len(accessLevels))
+	for _, level := range accessLevels {
 		rv = append(rv, entitlement.NewAssignmentEntitlement(
 			resource,
 			AccessLevelString(level),
@@ -206,14 +208,25 @@ func (r *groupBuilder) Grant(
 	if err != nil {
 		return nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
-	accessLevel := AccessLevel(entitlement.Slug)
+
+	parts := strings.Split(entitlement.Id, ":")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid entitlement ID: %s", entitlement.Id)
+	}
+	accessLevelValue := AccessLevel(parts[2])
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("error converting user ID to int: %w", err)
 	}
 
-	err = r.AddGroupMember(ctx, groupId, userId, accessLevel)
+	err = r.AddGroupMember(ctx, groupId, userId, accessLevelValue)
 	if err != nil {
+		errResp := &gitlabSDK.ErrorResponse{}
+		if errors.As(err, &errResp) {
+			if errResp.Response != nil && errResp.Response.StatusCode == http.StatusConflict {
+				return annotations.New(&v2.GrantAlreadyExists{}), nil
+			}
+		}
 		return nil, fmt.Errorf("error adding user to group: %w", err)
 	}
 	return nil, nil
@@ -233,6 +246,9 @@ func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 
 	err = r.RemoveGroupMember(ctx, groupId, userId)
 	if err != nil {
+		if errors.Is(err, gitlabSDK.ErrNotFound) {
+			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+		}
 		return nil, fmt.Errorf("error removing user from group: %w", err)
 	}
 
