@@ -19,6 +19,31 @@ jobs:
           version: latest
           args: --timeout=3m
 
+  go-test:
+    strategy:
+      matrix:
+        go-version: [1.22.x]
+        platform: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Install Go
+        if: success()
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: go tests
+        run: go test -v -covermode=count -json ./... > test.json
+      - name: Print go test results
+        if: always()
+        run: cat test.json
+      - name: annotate go tests
+        if: always()
+        uses: guyarb/golang-test-annotations@v0.8.0
+        with:
+          test-results: test.json
+
   test-groups:
     runs-on: ubuntu-latest
 
