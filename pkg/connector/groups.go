@@ -219,12 +219,27 @@ func (r *groupBuilder) Grant(
 	accessLevelValue := AccessLevel(parts[2])
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
-		l.Warn("baton-gitlab grant: unable to parse user ID", zap.Error(err))
-		userEmail := principal.Id.Resource
+		l.Warn("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
+		ut, err := resourceSdk.GetUserTrait(principal)
+		if err != nil {
+			return nil, fmt.Errorf("baton-gitlab: error getting user trait: %w", err)
+		}
+		if len(ut.Emails) == 0 {
+			return nil, fmt.Errorf("baton-gitlab: user has no email. cannot invite user to group")
+		}
+		userEmail := ut.Emails[0].Address
+		for _, email := range ut.Emails {
+			if email.IsPrimary {
+				userEmail = email.Address
+				break
+			}
+		}
+		l.Info("baton-gitlab grant: inviting user to group", zap.String("email", userEmail))
 		err = r.InviteGroupMember(ctx, groupId, userEmail, accessLevelValue)
 		if err != nil {
 			return nil, fmt.Errorf("error inviting user to group: %w", err)
 		}
+		return nil, nil
 	}
 
 	err = r.AddGroupMember(ctx, groupId, userId, accessLevelValue)
