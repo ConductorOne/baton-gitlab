@@ -15,7 +15,9 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
+	"go.uber.org/zap"
 )
 
 type groupBuilder struct {
@@ -203,6 +205,7 @@ func (r *groupBuilder) Grant(
 	annotations.Annotations,
 	error,
 ) {
+	l := ctxzap.Extract(ctx)
 	groupIdAndName := entitlement.Resource.Id.Resource
 	groupId, _, err := fromGroupResourceId(groupIdAndName)
 	if err != nil {
@@ -216,7 +219,12 @@ func (r *groupBuilder) Grant(
 	accessLevelValue := AccessLevel(parts[2])
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
-		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+		l.Warn("baton-gitlab grant: unable to parse user ID", zap.Error(err))
+		userEmail := principal.Id.Resource
+		err = r.InviteGroupMember(ctx, groupId, userEmail, accessLevelValue)
+		if err != nil {
+			return nil, fmt.Errorf("error inviting user to group: %w", err)
+		}
 	}
 
 	err = r.AddGroupMember(ctx, groupId, userId, accessLevelValue)
