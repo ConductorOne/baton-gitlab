@@ -136,6 +136,25 @@ func (o *Client) AddGroupMember(ctx context.Context, groupId string, userId int,
 	return nil
 }
 
+func (o *Client) InviteGroupMember(ctx context.Context, groupId, userEmail string, accessLevel gitlabSDK.AccessLevelValue) error {
+	_, res, err := o.Invites.GroupInvites(groupId, &gitlabSDK.InvitesOptions{
+		Email:       gitlabSDK.Ptr(userEmail),
+		AccessLevel: gitlabSDK.Ptr(accessLevel),
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return err
+	}
+
+	return nil
+}
+
 func (o *Client) RemoveGroupMember(ctx context.Context, groupId string, userId int) error {
 	res, err := o.GroupMembers.RemoveGroupMember(groupId, userId,
 		&gitlabSDK.RemoveGroupMemberOptions{},
