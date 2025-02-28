@@ -420,8 +420,8 @@ github.com/tklauser/numcpus
 # github.com/yusufpapurcu/wmi v1.2.4
 ## explicit; go 1.16
 github.com/yusufpapurcu/wmi
-# gitlab.com/gitlab-org/api/client-go v0.118.0
-## explicit; go 1.23.4
+# gitlab.com/gitlab-org/api/client-go v0.118.0 => gitlab.com/jirwin/client-go v0.123.1-0.20250228021302-c3f0af7d3169
+## explicit; go 1.22
 gitlab.com/gitlab-org/api/client-go
 # go.opentelemetry.io/auto/sdk v1.1.0
 ## explicit; go 1.22.0
@@ -562,7 +562,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/time v0.8.0
+# golang.org/x/time v0.9.0
 ## explicit; go 1.18
 golang.org/x/time/rate
 # google.golang.org/genproto/googleapis/api v0.0.0-20250127172529-29210b9bc287
@@ -721,3 +721,4 @@ modernc.org/memory
 # modernc.org/sqlite v1.34.5
 ## explicit; go 1.21
 modernc.org/sqlite/lib
+# gitlab.com/gitlab-org/api/client-go => gitlab.com/jirwin/client-go v0.123.1-0.20250228021302-c3f0af7d3169
