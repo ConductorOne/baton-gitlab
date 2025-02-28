@@ -33,8 +33,52 @@ func (d *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.R
 // Metadata returns metadata about the connector.
 func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
 	return &v2.ConnectorMetadata{
-		DisplayName: "My Baton Connector",
-		Description: "The template implementation of a baton connector",
+		DisplayName: "GitLab",
+		Description: "GitLab is a web-based Git repository manager with built-in CI/CD pipeline functionality.",
+		AccountCreationSchema: &v2.ConnectorAccountCreationSchema{
+			FieldMap: map[string]*v2.ConnectorAccountCreationSchema_Field{
+				"first_name": {
+					DisplayName: "Name",
+					Required:    true,
+					Description: "This name will be used for the user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "Name",
+					Order:       1,
+				},
+				"email": {
+					DisplayName: "Email",
+					Required:    true,
+					Description: "This email will be used as the login for the user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "Email",
+					Order:       2,
+				},
+				"username": {
+					DisplayName: "Username",
+					Required:    true,
+					Description: "This username will be used for the user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "Username",
+					Order:       3,
+				},
+				"group_id_for_saml": {
+					DisplayName: "Group ID for SAML",
+					Required:    false,
+					Description: "If this is set, the user will use the specified group for SAML authentication.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "Group ID for SAML",
+					Order:       4,
+				},
+			},
+		},
 	}, nil
 }
 
