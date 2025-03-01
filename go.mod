@@ -4,7 +4,9 @@ go 1.23.4
 
 require (
 	github.com/conductorone/baton-sdk v0.2.70
+	github.com/ennyjfrick/ruleguard-logfatal v0.0.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
+	github.com/quasilyte/go-ruleguard/dsl v0.3.22
 	github.com/spf13/viper v1.19.0
 	gitlab.com/gitlab-org/api/client-go v0.118.0
 	go.uber.org/zap v1.27.0
