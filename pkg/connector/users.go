@@ -86,7 +86,7 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	var res *gitlabSDK.Response
 	var err error
 
-	users, res, err = o.Client.GetAllUsers(ctx)
+	users, res, err = o.Client.GetAllUsers(ctx, pToken.Token)
 	if err != nil {
 		return nil, "", nil, err
 	}
