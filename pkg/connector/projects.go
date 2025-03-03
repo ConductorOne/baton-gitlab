@@ -39,9 +39,6 @@ func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId
 			),
 		},
 		resourceSdk.WithParentResourceID(parentResourceID),
-		resourceSdk.WithAnnotation(
-			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
-		),
 	)
 }
 

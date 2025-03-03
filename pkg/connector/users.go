@@ -24,61 +24,26 @@ func (o *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return userResourceType
 }
 
-func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	var id int
-	// NOTE: The email attribute is only visible to group owners for enterprise users of the group when an API request is sent to the group itself, or that group's subgroups or projects.
-	// https://docs.gitlab.com/ee/api/members.html#known-issues
-	var email string
-	var username string
-	var name string
-	var state string
-	var accessLevel int
-
-	switch user := user.(type) {
-	case *gitlabSDK.GroupMember:
-		id = user.ID
-		email = user.Email
-		state = user.State
-		name = user.Name
-		username = user.Username
-		accessLevel = int(user.AccessLevel)
-	case *gitlabSDK.ProjectMember:
-		id = user.ID
-		email = user.Email
-		state = user.State
-		name = user.Name
-		username = user.Username
-		accessLevel = int(user.AccessLevel)
-	case *gitlabSDK.User:
-		id = user.ID
-		email = user.Email
-		state = user.State
-		name = user.Name
-		username = user.Username
-	default:
-		return nil, fmt.Errorf("unknown user type: %T", user)
-	}
-
+func userResource(user gitlabSDK.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	profile := map[string]interface{}{
-		"first_name":   name,
-		"username":     username,
-		"email":        email,
-		"state":        state,
-		"access_level": accessLevel,
-		"id":           id,
+		"id":         user.ID,
+		"first_name": user.Name,
+		"username":   user.Username,
+		"email":      user.Email,
+		"state":      user.State,
 	}
 
 	userTraitOptions := []resourceSdk.UserTraitOption{
-		resourceSdk.WithEmail(email, true),
+		resourceSdk.WithEmail(user.Email, true),
 		resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_ENABLED),
 		resourceSdk.WithUserProfile(profile),
-		resourceSdk.WithUserLogin(email),
+		resourceSdk.WithUserLogin(user.Email),
 	}
 
 	return resourceSdk.NewUserResource(
-		name,
+		user.Name,
 		userResourceType,
-		id,
+		user.ID,
 		userTraitOptions,
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)
@@ -117,6 +82,38 @@ func (o *userBuilder) setEmailsProjectMembers(ctx context.Context, users []*gitl
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+	var users []gitlabSDK.User
+	var res *gitlabSDK.Response
+	var err error
+
+	users, res, err = o.Client.GetAllUsers(ctx)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	outResources := make([]*v2.Resource, 0, len(users))
+	for _, user := range users {
+		resource, err := userResource(user, parentResourceID)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		outResources = append(outResources, resource)
+	}
+
+	var nextPage string
+	if res.NextPage != 0 {
+		nextPage = strconv.Itoa(res.NextPage)
+	}
+
+	return outResources, nextPage, nil, nil
+}
+
+// Old_List is the original List method implemented for this connector.
+// It should suffer a lot of modifications, and it's on the table the idea of maintaining old and new way to List Users.
+// Have in mind that this method was made based on the fact that User Resources are Child Resources of Groups and Projects Resources.
+// This is no longer like that. So the raw method won't work.
+func (o *userBuilder) Old_List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+	/*  ---------- COMMENTED SINCE THE CHANGES ON userResource() FUNCTION CAUSE COMPILING ERRORS
 	if parentResourceID == nil {
 		return nil, "", nil, nil
 	}
@@ -180,15 +177,17 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	}
 
 	return outResources, nextPage, nil, nil
+	*/
+	return nil, "", nil, nil
 }
 
 // Entitlements always returns an empty slice for users.
-func (o *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+func (o *userBuilder) Entitlements(_ context.Context, _ *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
 }
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
-func (o *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+func (o *userBuilder) Grants(_ context.Context, _ *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
 }
 
@@ -222,7 +221,7 @@ func (o *userBuilder) CreateAccount(
 		return nil, nil, nil, err
 	}
 
-	userResource, err := userResource(user, nil)
+	userResource, err := userResource(*user, nil)
 	if err != nil {
 		return nil, nil, nil, err
 	}
