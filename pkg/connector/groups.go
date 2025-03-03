@@ -82,7 +82,7 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 
 	outResources := make([]*v2.Resource, 0, len(groups))
 	for _, group := range groups {
-		shouldCreateResource, err := parentIsSuperGroup(group.ParentID, parentResourceID)
+		shouldCreateResource, err := parentResourceIsParentGroup(group.ParentID, parentResourceID)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -105,12 +105,12 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 	return outResources, nextPage, nil, nil
 }
 
-// parentIsSuperGroup validates that the parentResourceID received by the function call belongs to the corresponding super group.
+// parentResourceIsParentGroup validates that the parentResourceID received by the function call belongs to the corresponding parent group.
 // The validation occurs between the ID on the group data (given by the API) and the ID of the parentResource.
-// superGroupId will be 0 (zero) if the group isn't a subgroup. parentResourceID will be nil if no parent resource was received in the List function.
+// parentGroupId will be 0 (zero) if the group isn't a subgroup. parentResourceID will be nil if no parent resource was received in the List function.
 // Both cases are checked and handled in this function.
-func parentIsSuperGroup(superGroupId int, parentResourceID *v2.ResourceId) (bool, error) {
-	if superGroupId != 0 && parentResourceID == nil {
+func parentResourceIsParentGroup(parentGroupId int, parentResourceID *v2.ResourceId) (bool, error) {
+	if parentGroupId != 0 && parentResourceID == nil {
 		// This path occurs on the first execution of the List func. When all groups are received from the API. Subgroups will be skipped.
 		return false, nil
 	}
@@ -121,12 +121,16 @@ func parentIsSuperGroup(superGroupId int, parentResourceID *v2.ResourceId) (bool
 	}
 
 	parentIdSegments := strings.Split(parentResourceID.Resource, "/")
+	if len(parentIdSegments) < 2 {
+		return false, fmt.Errorf("error while segmenting the parentResourceID: %v It has less than 2 segments", parentResourceID)
+	}
+
 	parentId, err := strconv.Atoi(parentIdSegments[len(parentIdSegments)-2])
 	if err != nil {
 		return false, err
 	}
 
-	return superGroupId == parentId, nil
+	return parentGroupId == parentId, nil
 }
 
 func AccessLevelString(level gitlabSDK.AccessLevelValue) string {
