@@ -33,10 +33,11 @@ var accessLevels = []gitlabSDK.AccessLevelValue{
 	gitlabSDK.OwnerPermissions,
 }
 
-func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
+func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	profile := map[string]interface{}{
 		"id":          group.ID,
 		"name":        group.Name,
+		"full_name":   group.FullName,
 		"description": group.Description,
 	}
 	if group.ParentID != 0 {
@@ -44,7 +45,7 @@ func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
 	}
 
 	return resourceSdk.NewGroupResource(
-		group.Name,
+		group.FullName,
 		groupResourceType,
 		toGroupResourceId(strconv.Itoa(group.ID), group.Name),
 		[]resourceSdk.GroupTraitOption{
@@ -55,7 +56,9 @@ func groupResource(group *gitlabSDK.Group) (*v2.Resource, error) {
 		resourceSdk.WithAnnotation(
 			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
 			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
 		),
+		resourceSdk.WithParentResourceID(parentResourceID),
 	)
 }
 
@@ -79,7 +82,16 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 
 	outResources := make([]*v2.Resource, 0, len(groups))
 	for _, group := range groups {
-		resource, err := groupResource(group)
+		shouldCreateResource, err := parentIsSuperGroup(group.ParentID, parentResourceID)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		if !shouldCreateResource {
+			continue
+		}
+
+		resource, err := groupResource(group, parentResourceID)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -91,6 +103,30 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		nextPage = strconv.Itoa(res.NextPage)
 	}
 	return outResources, nextPage, nil, nil
+}
+
+// parentIsSuperGroup validates that the parentResourceID received by the function call belongs to the corresponding super group.
+// The validation occurs between the ID on the group data (given by the API) and the ID of the parentResource.
+// superGroupId will be 0 (zero) if the group isn't a subgroup. parentResourceID will be nil if no parent resource was received in the List function.
+// Both cases are checked and handled in this function.
+func parentIsSuperGroup(superGroupId int, parentResourceID *v2.ResourceId) (bool, error) {
+	if superGroupId != 0 && parentResourceID == nil {
+		// This path occurs on the first execution of the List func. When all groups are received from the API. Subgroups will be skipped.
+		return false, nil
+	}
+
+	if parentResourceID == nil {
+		// If parentResourceID is null, is because it's a root group, not a subgroup, so there is no need to validate a parent group id, and it shouldn't be skipped.
+		return true, nil
+	}
+
+	parentIdSegments := strings.Split(parentResourceID.Resource, "/")
+	parentId, err := strconv.Atoi(parentIdSegments[len(parentIdSegments)-2])
+	if err != nil {
+		return false, err
+	}
+
+	return superGroupId == parentId, nil
 }
 
 func AccessLevelString(level gitlabSDK.AccessLevelValue) string {
