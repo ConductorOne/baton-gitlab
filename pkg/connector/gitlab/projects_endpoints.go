@@ -8,29 +8,7 @@ import (
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
-func (o *Client) ListProjects(ctx context.Context, groupId string) ([]*gitlabSDK.Project, *gitlabSDK.Response, error) {
-	projects, res, err := o.Groups.ListGroupProjects(groupId, &gitlabSDK.ListGroupProjectsOptions{
-		ListOptions: gitlabSDK.ListOptions{},
-	},
-		gitlabSDK.WithContext(ctx),
-	)
-
-	if err != nil {
-		return nil, res, err
-	}
-
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, res, err
-	}
-
-	return projects, res, nil
-}
-
-func (o *Client) ListProjectsPaginate(ctx context.Context, groupId, nextPageStr string) ([]*gitlabSDK.Project, *gitlabSDK.Response, error) {
-	if nextPageStr == "" {
-		return nil, nil, fmt.Errorf("gitlab-connector: no page given for pagination")
-	}
-
+func (o *Client) ListProjects(ctx context.Context, groupId, nextPageStr string) ([]*gitlabSDK.Project, *gitlabSDK.Response, error) {
 	var nextPage int
 	var err error
 
@@ -39,10 +17,6 @@ func (o *Client) ListProjectsPaginate(ctx context.Context, groupId, nextPageStr 
 		if err != nil {
 			return nil, nil, err
 		}
-	}
-
-	if nextPage < 1 {
-		return nil, nil, fmt.Errorf("gitlab-connector: invalid page given for pagination: %d", nextPage)
 	}
 
 	projects, res, err := o.Groups.ListGroupProjects(groupId, &gitlabSDK.ListGroupProjectsOptions{
