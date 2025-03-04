@@ -33,7 +33,7 @@ func NewClient(ctx context.Context, accessToken, baseURL string) (*Client, error
 }
 
 // GetAllUsers retrieves the whole list of Users of the GitLab instance.
-// Endpoint: /api/v4/users
+// Endpoint: /api/v4/users.
 func (c *Client) GetAllUsers(ctx context.Context, nextPageToken string) ([]gitlabSDK.User, *gitlabSDK.Response, error) {
 	var nextPage int
 	var err error

@@ -326,7 +326,5 @@ func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 }
 
 func (o *groupBuilder) loadIntoCache(groups []*gitlabSDK.Group) {
-	for _, group := range groups {
-		o.GroupsCache = append(o.GroupsCache, group)
-	}
+	o.GroupsCache = append(o.GroupsCache, groups...)
 }
