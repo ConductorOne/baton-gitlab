@@ -82,11 +82,17 @@ func (o *userBuilder) setEmailsProjectMembers(ctx context.Context, users []*gitl
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var users []gitlabSDK.User
-	var res *gitlabSDK.Response
-	var err error
+	var (
+		users     []gitlabSDK.User
+		res       *gitlabSDK.Response
+		pageToken string
+		err       error
+	)
 
-	users, res, err = o.Client.GetAllUsers(ctx, pToken.Token)
+	if pToken != nil {
+		pageToken = pToken.Token
+	}
+	users, res, err = o.Client.GetAllUsers(ctx, pageToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
