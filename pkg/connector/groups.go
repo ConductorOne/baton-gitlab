@@ -74,13 +74,13 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		pageToken string
 		err       error
 	)
+	if pToken != nil {
+		pageToken = pToken.Token
+	}
 
-	if (pToken == nil || pToken.Token == "") && len(o.GroupsCache) > 0 {
+	if len(o.GroupsCache) > 0 && pageToken == "" {
 		groups = o.GroupsCache
 	} else {
-		if pToken != nil {
-			pageToken = pToken.Token
-		}
 		groups, res, err = o.ListGroups(ctx, pageToken)
 		if err != nil {
 			return nil, "", nil, err

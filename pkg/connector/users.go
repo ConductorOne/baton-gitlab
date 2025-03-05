@@ -156,7 +156,7 @@ func (o *userBuilder) CreateAccount(
 		return nil, nil, nil, err
 	}
 
-	groupID, err := o.validateUserGroup(ctx, accountInfo)
+	groupID, err := o.getGroupID(ctx, accountInfo)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -255,7 +255,7 @@ func newUserBuilder(client *gitlab.Client) *userBuilder {
 	}
 }
 
-func (o *userBuilder) validateUserGroup(ctx context.Context, accountInfo *v2.AccountInfo) (string, error) {
+func (o *userBuilder) getGroupID(ctx context.Context, accountInfo *v2.AccountInfo) (string, error) {
 	pMap := accountInfo.Profile.AsMap()
 	groupName, ok := pMap["group_name"].(string)
 	if !ok || groupName == "" {
