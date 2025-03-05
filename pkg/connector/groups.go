@@ -57,6 +57,7 @@ func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2
 		resourceSdk.WithAnnotation(
 			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
 			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
 		),
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)

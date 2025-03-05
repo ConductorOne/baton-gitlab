@@ -67,6 +67,16 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 					Placeholder: "Username",
 					Order:       3,
 				},
+				"group_name": {
+					DisplayName: "Group Name",
+					Required:    true,
+					Description: "The group indicated will be used assigned to the user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "Group Name",
+					Order:       4,
+				},
 				"group_id_for_saml": {
 					DisplayName: "Group ID for SAML",
 					Required:    false,
@@ -75,7 +85,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
 					},
 					Placeholder: "Group ID for SAML",
-					Order:       4,
+					Order:       5,
 				},
 			},
 		},

@@ -24,31 +24,6 @@ func (o *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return userResourceType
 }
 
-func userResource(user gitlabSDK.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	profile := map[string]interface{}{
-		"id":         user.ID,
-		"first_name": user.Name,
-		"username":   user.Username,
-		"email":      user.Email,
-		"state":      user.State,
-	}
-
-	userTraitOptions := []resourceSdk.UserTraitOption{
-		resourceSdk.WithEmail(user.Email, true),
-		resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_ENABLED),
-		resourceSdk.WithUserProfile(profile),
-		resourceSdk.WithUserLogin(user.Email),
-	}
-
-	return resourceSdk.NewUserResource(
-		user.Name,
-		userResourceType,
-		user.ID,
-		userTraitOptions,
-		resourceSdk.WithParentResourceID(parentResourceID),
-	)
-}
-
 func (o *userBuilder) setEmailsGroupMembers(ctx context.Context, users []*gitlabSDK.GroupMember) []*gitlabSDK.GroupMember {
 	for i, user := range users {
 		details, _, err := o.Users.GetUser(user.ID, gitlabSDK.GetUsersOptions{}, gitlabSDK.WithContext(ctx))
@@ -82,24 +57,57 @@ func (o *userBuilder) setEmailsProjectMembers(ctx context.Context, users []*gitl
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var (
-		users     []gitlabSDK.User
-		res       *gitlabSDK.Response
-		pageToken string
-		err       error
-	)
+	var users []any
+	var res *gitlabSDK.Response
+	var groupId string
+	var err error
 
-	if pToken != nil {
-		pageToken = pToken.Token
+	// If the parent resource is nil, this function will exit, the users will be request based on the Groups and Projects received on the arguments.
+	if parentResourceID == nil {
+		return nil, "", nil, nil
 	}
-	users, res, err = o.Client.GetAllUsers(ctx, pageToken)
+
+	var groupMembers []*gitlabSDK.GroupMember
+	if parentResourceID.ResourceType == groupResourceType.Id {
+		groupId, _, err = fromGroupResourceId(parentResourceID.Resource)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
+		}
+		if pToken.Token == "" {
+			groupMembers, res, err = o.ListGroupMembers(ctx, groupId)
+		} else {
+			groupMembers, res, err = o.ListGroupMembersPaginate(ctx, groupId, pToken.Token)
+		}
+	}
 	if err != nil {
 		return nil, "", nil, err
 	}
 
+	groupMembers = o.setEmailsGroupMembers(ctx, groupMembers)
+	for _, member := range groupMembers {
+		users = append(users, member)
+	}
+
+	var projectMembers []*gitlabSDK.ProjectMember
+	if parentResourceID.ResourceType == projectResourceType.Id {
+		if pToken.Token == "" {
+			projectMembers, res, err = o.ListProjectMembers(ctx, parentResourceID.Resource)
+		} else {
+			projectMembers, res, err = o.ListProjectMembersPaginate(ctx, parentResourceID.Resource, pToken.Token)
+		}
+	}
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	projectMembers = o.setEmailsProjectMembers(ctx, projectMembers)
+	for _, member := range projectMembers {
+		users = append(users, member)
+	}
+
 	outResources := make([]*v2.Resource, 0, len(users))
 	for _, user := range users {
-		resource, err := userResource(user, parentResourceID)
+		resource, err := userResource(user)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -107,10 +115,9 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	}
 
 	var nextPage string
-	if res.NextPage != 0 {
+	if res != nil && res.NextPage != 0 {
 		nextPage = strconv.Itoa(res.NextPage)
 	}
-
 	return outResources, nextPage, nil, nil
 }
 
@@ -149,12 +156,23 @@ func (o *userBuilder) CreateAccount(
 		return nil, nil, nil, err
 	}
 
+	groupID, err := o.validateUserGroup(ctx, accountInfo)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	user, _, err := o.Users.CreateUser(createUserOpts)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	userResource, err := userResource(*user, nil)
+	accessLevelValue := AccessLevel("Guest")
+	err = o.AddGroupMember(ctx, groupID, user.ID, accessLevelValue)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	userResource, err := userResource(user)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -235,4 +253,88 @@ func newUserBuilder(client *gitlab.Client) *userBuilder {
 	return &userBuilder{
 		Client: client,
 	}
+}
+
+func (o *userBuilder) validateUserGroup(ctx context.Context, accountInfo *v2.AccountInfo) (string, error) {
+	pMap := accountInfo.Profile.AsMap()
+	groupName, ok := pMap["group_name"].(string)
+	if !ok || groupName == "" {
+		return "", fmt.Errorf("group_name is required")
+	}
+
+	groups, _, err := o.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
+		Search: &groupName,
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	for _, group := range groups {
+		if group.Name == groupName {
+			return strconv.Itoa(group.ID), nil
+		}
+	}
+
+	return "", fmt.Errorf("group name %s not found", groupName)
+}
+
+func userResource(user any) (*v2.Resource, error) {
+	var id int
+	// NOTE: The email attribute is only visible to group owners for enterprise users of the group when an API request is sent to the group itself, or that group's subgroups or projects.
+	// https://docs.gitlab.com/ee/api/members.html#known-issues
+	var email string
+	var username string
+	var name string
+	var state string
+	var accessLevel int
+
+	switch user := user.(type) {
+	case *gitlabSDK.GroupMember:
+		id = user.ID
+		email = user.Email
+		state = user.State
+		name = user.Name
+		username = user.Username
+		accessLevel = int(user.AccessLevel)
+	case *gitlabSDK.ProjectMember:
+		id = user.ID
+		email = user.Email
+		state = user.State
+		name = user.Name
+		username = user.Username
+		accessLevel = int(user.AccessLevel)
+	case *gitlabSDK.User:
+		id = user.ID
+		email = user.Email
+		state = user.State
+		name = user.Name
+		username = user.Username
+	default:
+		return nil, fmt.Errorf("unknown user type: %T", user)
+	}
+
+	profile := map[string]interface{}{
+		"first_name":   name,
+		"username":     username,
+		"email":        email,
+		"state":        state,
+		"access_level": accessLevel,
+		"id":           id,
+	}
+
+	userTraitOptions := []resourceSdk.UserTraitOption{
+		resourceSdk.WithEmail(email, true),
+		resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_ENABLED),
+		resourceSdk.WithUserProfile(profile),
+		resourceSdk.WithUserLogin(email),
+	}
+
+	return resourceSdk.NewUserResource(
+		name,
+		userResourceType,
+		id,
+		userTraitOptions,
+	)
 }
