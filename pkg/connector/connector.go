@@ -67,16 +67,6 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 					Placeholder: "Username",
 					Order:       3,
 				},
-				"group_name": {
-					DisplayName: "Group Name",
-					Required:    true,
-					Description: "The group indicated will be used assigned to the user.",
-					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
-						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
-					},
-					Placeholder: "Group Name",
-					Order:       4,
-				},
 				"group_id_for_saml": {
 					DisplayName: "Group ID for SAML",
 					Required:    false,
@@ -85,7 +75,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
 					},
 					Placeholder: "Group ID for SAML",
-					Order:       5,
+					Order:       4,
 				},
 			},
 		},
@@ -99,8 +89,8 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, accessToken, baseURL string) (*Connector, error) {
-	client, err := gitlab.NewClient(ctx, accessToken, baseURL)
+func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Connector, error) {
+	client, err := gitlab.NewClient(ctx, accessToken, baseURL, accountCreationGroup)
 	if err != nil {
 		return nil, fmt.Errorf("error creating gitlab client: %w", err)
 	}

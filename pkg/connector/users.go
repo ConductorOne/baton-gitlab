@@ -156,7 +156,7 @@ func (o *userBuilder) CreateAccount(
 		return nil, nil, nil, err
 	}
 
-	groupID, err := o.getGroupID(ctx, accountInfo)
+	groupID, err := o.getGroupID(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -255,13 +255,12 @@ func newUserBuilder(client *gitlab.Client) *userBuilder {
 	}
 }
 
-func (o *userBuilder) getGroupID(ctx context.Context, accountInfo *v2.AccountInfo) (string, error) {
-	pMap := accountInfo.Profile.AsMap()
-	groupName, ok := pMap["group_name"].(string)
-	if !ok || groupName == "" {
-		return "", fmt.Errorf("group_name is required")
+func (o *userBuilder) getGroupID(ctx context.Context) (string, error) {
+	if o.AccountCreationGroup == "" {
+		return "", fmt.Errorf("a creation group name is required when configuring the connector")
 	}
 
+	groupName := o.AccountCreationGroup
 	groups, _, err := o.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
 		Search: &groupName,
 	},
