@@ -9,9 +9,10 @@ import (
 
 type Client struct {
 	*gitlabSDK.Client
+	AccountCreationGroup string
 }
 
-func NewClient(ctx context.Context, accessToken, baseURL string) (*Client, error) {
+func NewClient(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Client, error) {
 	httpClient, err := uhttp.NewClient(ctx)
 	if err != nil {
 		return nil, err
@@ -26,6 +27,7 @@ func NewClient(ctx context.Context, accessToken, baseURL string) (*Client, error
 	}
 
 	return &Client{
-		Client: client,
+		Client:               client,
+		AccountCreationGroup: accountCreationGroup,
 	}, nil
 }

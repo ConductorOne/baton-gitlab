@@ -38,10 +38,8 @@ func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId
 				},
 			),
 		},
+		resourceSdk.WithAnnotation(&v2.ChildResourceType{ResourceTypeId: userResourceType.Id}),
 		resourceSdk.WithParentResourceID(parentResourceID),
-		resourceSdk.WithAnnotation(
-			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
-		),
 	)
 }
 
@@ -54,19 +52,22 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 		return nil, "", nil, nil
 	}
 
-	var projects []*gitlabSDK.Project
-	var res *gitlabSDK.Response
-	var err error
+	var (
+		projects  []*gitlabSDK.Project
+		res       *gitlabSDK.Response
+		pageToken string
+		err       error
+	)
 
 	groupId, _, err := fromGroupResourceId(parentResourceID.Resource)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
-	if pToken.Token == "" {
-		projects, res, err = o.ListProjects(ctx, groupId)
-	} else {
-		projects, res, err = o.ListProjectsPaginate(ctx, groupId, pToken.Token)
+
+	if pToken != nil {
+		pageToken = pToken.Token
 	}
+	projects, res, err = o.ListProjects(ctx, groupId, pageToken)
 	if err != nil {
 		return nil, "", nil, err
 	}

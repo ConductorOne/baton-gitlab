@@ -24,66 +24,6 @@ func (o *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return userResourceType
 }
 
-func userResource(user any, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	var id int
-	// NOTE: The email attribute is only visible to group owners for enterprise users of the group when an API request is sent to the group itself, or that group's subgroups or projects.
-	// https://docs.gitlab.com/ee/api/members.html#known-issues
-	var email string
-	var username string
-	var name string
-	var state string
-	var accessLevel int
-
-	switch user := user.(type) {
-	case *gitlabSDK.GroupMember:
-		id = user.ID
-		email = user.Email
-		state = user.State
-		name = user.Name
-		username = user.Username
-		accessLevel = int(user.AccessLevel)
-	case *gitlabSDK.ProjectMember:
-		id = user.ID
-		email = user.Email
-		state = user.State
-		name = user.Name
-		username = user.Username
-		accessLevel = int(user.AccessLevel)
-	case *gitlabSDK.User:
-		id = user.ID
-		email = user.Email
-		state = user.State
-		name = user.Name
-		username = user.Username
-	default:
-		return nil, fmt.Errorf("unknown user type: %T", user)
-	}
-
-	profile := map[string]interface{}{
-		"first_name":   name,
-		"username":     username,
-		"email":        email,
-		"state":        state,
-		"access_level": accessLevel,
-		"id":           id,
-	}
-
-	userTraitOptions := []resourceSdk.UserTraitOption{
-		resourceSdk.WithEmail(email, true),
-		resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_ENABLED),
-		resourceSdk.WithUserProfile(profile),
-		resourceSdk.WithUserLogin(email),
-	}
-
-	return resourceSdk.NewUserResource(
-		name,
-		userResourceType,
-		id,
-		userTraitOptions,
-		resourceSdk.WithParentResourceID(parentResourceID),
-	)
-}
-
 func (o *userBuilder) setEmailsGroupMembers(ctx context.Context, users []*gitlabSDK.GroupMember) []*gitlabSDK.GroupMember {
 	for i, user := range users {
 		details, _, err := o.Users.GetUser(user.ID, gitlabSDK.GetUsersOptions{}, gitlabSDK.WithContext(ctx))
@@ -117,17 +57,17 @@ func (o *userBuilder) setEmailsProjectMembers(ctx context.Context, users []*gitl
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	if parentResourceID == nil {
-		return nil, "", nil, nil
-	}
-
 	var users []any
 	var res *gitlabSDK.Response
 	var groupId string
 	var err error
 
-	var groupMembers []*gitlabSDK.GroupMember
+	// If the parent resource is nil, this function will exit, the users will be request based on the Groups and Projects received on the arguments.
+	if parentResourceID == nil {
+		return nil, "", nil, nil
+	}
 
+	var groupMembers []*gitlabSDK.GroupMember
 	if parentResourceID.ResourceType == groupResourceType.Id {
 		groupId, _, err = fromGroupResourceId(parentResourceID.Resource)
 		if err != nil {
@@ -167,7 +107,7 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 
 	outResources := make([]*v2.Resource, 0, len(users))
 	for _, user := range users {
-		resource, err := userResource(user, parentResourceID)
+		resource, err := userResource(user)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -175,20 +115,19 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	}
 
 	var nextPage string
-	if res.NextPage != 0 {
+	if res != nil && res.NextPage != 0 {
 		nextPage = strconv.Itoa(res.NextPage)
 	}
-
 	return outResources, nextPage, nil, nil
 }
 
 // Entitlements always returns an empty slice for users.
-func (o *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+func (o *userBuilder) Entitlements(_ context.Context, _ *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
 }
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
-func (o *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+func (o *userBuilder) Grants(_ context.Context, _ *v2.Resource, _ *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
 }
 
@@ -217,12 +156,23 @@ func (o *userBuilder) CreateAccount(
 		return nil, nil, nil, err
 	}
 
+	groupID, err := o.getGroupID(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	user, _, err := o.Users.CreateUser(createUserOpts)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	userResource, err := userResource(user, nil)
+	accessLevelValue := AccessLevel("Guest")
+	err = o.AddGroupMember(ctx, groupID, user.ID, accessLevelValue)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	userResource, err := userResource(user)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -303,4 +253,87 @@ func newUserBuilder(client *gitlab.Client) *userBuilder {
 	return &userBuilder{
 		Client: client,
 	}
+}
+
+func (o *userBuilder) getGroupID(ctx context.Context) (string, error) {
+	if o.AccountCreationGroup == "" {
+		return "", fmt.Errorf("a creation group name is required when configuring the connector")
+	}
+
+	groupName := o.AccountCreationGroup
+	groups, _, err := o.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
+		Search: &groupName,
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	for _, group := range groups {
+		if group.Name == groupName {
+			return strconv.Itoa(group.ID), nil
+		}
+	}
+
+	return "", fmt.Errorf("group name %s not found", groupName)
+}
+
+func userResource(user any) (*v2.Resource, error) {
+	var id int
+	// NOTE: The email attribute is only visible to group owners for enterprise users of the group when an API request is sent to the group itself, or that group's subgroups or projects.
+	// https://docs.gitlab.com/ee/api/members.html#known-issues
+	var email string
+	var username string
+	var name string
+	var state string
+	var accessLevel int
+
+	switch user := user.(type) {
+	case *gitlabSDK.GroupMember:
+		id = user.ID
+		email = user.Email
+		state = user.State
+		name = user.Name
+		username = user.Username
+		accessLevel = int(user.AccessLevel)
+	case *gitlabSDK.ProjectMember:
+		id = user.ID
+		email = user.Email
+		state = user.State
+		name = user.Name
+		username = user.Username
+		accessLevel = int(user.AccessLevel)
+	case *gitlabSDK.User:
+		id = user.ID
+		email = user.Email
+		state = user.State
+		name = user.Name
+		username = user.Username
+	default:
+		return nil, fmt.Errorf("unknown user type: %T", user)
+	}
+
+	profile := map[string]interface{}{
+		"first_name":   name,
+		"username":     username,
+		"email":        email,
+		"state":        state,
+		"access_level": accessLevel,
+		"id":           id,
+	}
+
+	userTraitOptions := []resourceSdk.UserTraitOption{
+		resourceSdk.WithEmail(email, true),
+		resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_ENABLED),
+		resourceSdk.WithUserProfile(profile),
+		resourceSdk.WithUserLogin(email),
+	}
+
+	return resourceSdk.NewUserResource(
+		name,
+		userResourceType,
+		id,
+		userTraitOptions,
+	)
 }

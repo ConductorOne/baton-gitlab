@@ -22,6 +22,7 @@ import (
 
 type groupBuilder struct {
 	*gitlab.Client
+	GroupsCache []*gitlabSDK.Group
 }
 
 var accessLevels = []gitlabSDK.AccessLevelValue{
@@ -55,8 +56,8 @@ func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2
 		},
 		resourceSdk.WithAnnotation(
 			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
 			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
 		),
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)
@@ -67,17 +68,24 @@ func (o *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 }
 
 func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var groups []*gitlabSDK.Group
-	var res *gitlabSDK.Response
-	var err error
-
-	if pToken.Token == "" {
-		groups, res, err = o.ListGroups(ctx)
-	} else {
-		groups, res, err = o.ListGroupsPaginate(ctx, pToken.Token)
+	var (
+		groups    []*gitlabSDK.Group
+		res       *gitlabSDK.Response
+		pageToken string
+		err       error
+	)
+	if pToken != nil {
+		pageToken = pToken.Token
 	}
-	if err != nil {
-		return nil, "", nil, err
+
+	if len(o.GroupsCache) > 0 && pageToken == "" {
+		groups = o.GroupsCache
+	} else {
+		groups, res, err = o.ListGroups(ctx, pageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		o.loadIntoCache(groups)
 	}
 
 	outResources := make([]*v2.Resource, 0, len(groups))
@@ -99,7 +107,7 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 	}
 
 	var nextPage string
-	if res.NextPage != 0 {
+	if res != nil && res.NextPage != 0 {
 		nextPage = strconv.Itoa(res.NextPage)
 	}
 	return outResources, nextPage, nil, nil
@@ -316,4 +324,8 @@ func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	}
 
 	return nil, nil
+}
+
+func (o *groupBuilder) loadIntoCache(groups []*gitlabSDK.Group) {
+	o.GroupsCache = append(o.GroupsCache, groups...)
 }

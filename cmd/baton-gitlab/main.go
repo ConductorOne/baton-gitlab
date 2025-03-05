@@ -52,6 +52,7 @@ func getConnector(ctx context.Context, v *viper.Viper) (types.ConnectorServer, e
 		ctx,
 		v.GetString(AccessToken.FieldName),
 		v.GetString(BaseURL.FieldName),
+		v.GetString(AccountCreationGroup.FieldName),
 	)
 
 	if err != nil {

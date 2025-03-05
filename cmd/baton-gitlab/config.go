@@ -17,6 +17,12 @@ var (
 		field.WithDefaultValue("https://gitlab.com/"),
 		field.WithRequired(false),
 	)
+	AccountCreationGroup = field.StringField(
+		"account-creation-group",
+		field.WithDescription("The group indicated will be used as a default group for the new users"),
+		field.WithDefaultValue(""),
+		field.WithRequired(false),
+	)
 
 	// ConfigurationFields defines the external configuration required for the
 	// connector to run. Note: these fields can be marked as optional or
@@ -24,6 +30,7 @@ var (
 	ConfigurationFields = []field.SchemaField{
 		AccessToken,
 		BaseURL,
+		AccountCreationGroup,
 	}
 
 	// FieldRelationships defines relationships between the fields listed in
