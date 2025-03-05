@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
