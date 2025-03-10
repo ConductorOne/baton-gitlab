@@ -21,12 +21,13 @@ type projectBuilder struct {
 }
 
 func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	_, groupName, err := fromGroupResourceId(parentResourceID.Resource)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing group resource id: %w", err)
-	}
+	//_, groupName, err := fromGroupResourceId(parentResourceID.Resource)
+	//if err != nil {
+	//	return nil, fmt.Errorf("error parsing group resource id: %w", err)
+	//}
 	return resourceSdk.NewGroupResource(
-		toProjectResourceId(groupName, project.Name),
+		//toProjectResourceId(groupName, project.Name),
+		project.NameWithNamespace,
 		projectResourceType,
 		project.ID,
 		[]resourceSdk.GroupTraitOption{
