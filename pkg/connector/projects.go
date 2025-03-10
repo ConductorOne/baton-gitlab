@@ -21,12 +21,7 @@ type projectBuilder struct {
 }
 
 func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	//_, groupName, err := fromGroupResourceId(parentResourceID.Resource)
-	//if err != nil {
-	//	return nil, fmt.Errorf("error parsing group resource id: %w", err)
-	//}
 	return resourceSdk.NewGroupResource(
-		//toProjectResourceId(groupName, project.Name),
 		project.NameWithNamespace,
 		projectResourceType,
 		project.ID,
@@ -44,7 +39,7 @@ func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId
 	)
 }
 
-func (o *projectBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
+func (o *projectBuilder) ResourceType(_ context.Context) *v2.ResourceType {
 	return projectResourceType
 }
 
