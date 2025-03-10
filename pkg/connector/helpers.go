@@ -9,10 +9,6 @@ func toGroupResourceId(groupId, groupName string) string {
 	return fmt.Sprintf("%s/%s", groupId, groupName)
 }
 
-func toProjectResourceId(groupName, projectName string) string {
-	return fmt.Sprintf("%s/%s", groupName, projectName)
-}
-
 func fromGroupResourceId(groupResourceId string) (string, string, error) {
 	parts := strings.Split(groupResourceId, "/")
 	if len(parts) != 2 {
