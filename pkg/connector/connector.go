@@ -9,6 +9,7 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
+	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
 type Connector struct {
@@ -37,7 +38,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 		Description: "GitLab is a web-based Git repository manager with built-in CI/CD pipeline functionality.",
 		AccountCreationSchema: &v2.ConnectorAccountCreationSchema{
 			FieldMap: map[string]*v2.ConnectorAccountCreationSchema_Field{
-				"first_name": {
+				"name": {
 					DisplayName: "Name",
 					Required:    true,
 					Description: "This name will be used for the user.",
@@ -85,6 +86,27 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
 // to be sure that they are valid.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
+	_, _, err := d.Client.ListGroups(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("error listing groups: %w", err)
+	}
+
+	if d.Client.AccountCreationGroup != "" {
+		groupName := d.Client.AccountCreationGroup
+		groups, _, err := d.Client.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
+			Search: &groupName,
+		},
+			gitlabSDK.WithContext(ctx),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error getting account creation group: %w", err)
+		}
+
+		if len(groups) == 0 {
+			return nil, fmt.Errorf("account creation group not found")
+		}
+	}
+
 	return nil, nil
 }
 
