@@ -257,7 +257,7 @@ func newUserBuilder(client *gitlab.Client) *userBuilder {
 
 func (o *userBuilder) getGroupID(ctx context.Context) (string, error) {
 	if o.AccountCreationGroup == "" {
-		return "", fmt.Errorf("a creation group name is required when configuring the connector")
+		return "", fmt.Errorf("account creation group not set. use --account-creation-group when running the connector")
 	}
 
 	groupName := o.AccountCreationGroup
@@ -267,7 +267,7 @@ func (o *userBuilder) getGroupID(ctx context.Context) (string, error) {
 		gitlabSDK.WithContext(ctx),
 	)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error listing groups: %w", err)
 	}
 
 	for _, group := range groups {
@@ -276,7 +276,7 @@ func (o *userBuilder) getGroupID(ctx context.Context) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("group name %s not found", groupName)
+	return "", fmt.Errorf("account creation group %s not found", groupName)
 }
 
 func userResource(user any) (*v2.Resource, error) {
