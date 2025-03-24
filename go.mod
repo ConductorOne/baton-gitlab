@@ -3,7 +3,7 @@ module github.com/conductorone/baton-gitlab
 go 1.23.4
 
 require (
-	github.com/conductorone/baton-sdk v0.2.81
+	github.com/conductorone/baton-sdk v0.2.84
 	github.com/ennyjfrick/ruleguard-logfatal v0.0.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/quasilyte/go-ruleguard/dsl v0.3.22
