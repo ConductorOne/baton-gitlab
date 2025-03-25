@@ -5,14 +5,14 @@ import (
 	"strings"
 )
 
-func toGroupResourceId(groupId, groupName string) string {
-	return fmt.Sprintf("%s/%s", groupId, groupName)
+func toGroupResourceId(groupId string) string {
+	return fmt.Sprintf("g/%s", groupId)
 }
 
-func fromGroupResourceId(groupResourceId string) (string, string, error) {
+func fromGroupResourceId(groupResourceId string) (string, error) {
 	parts := strings.Split(groupResourceId, "/")
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid group resource id: %s", groupResourceId)
+		return "", fmt.Errorf("invalid group resource id: %s", groupResourceId)
 	}
-	return parts[0], parts[1], nil
+	return parts[1], nil
 }

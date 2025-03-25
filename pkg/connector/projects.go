@@ -55,7 +55,7 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 		err       error
 	)
 
-	groupId, _, err := fromGroupResourceId(parentResourceID.Resource)
+	groupId, err := fromGroupResourceId(parentResourceID.Resource)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
