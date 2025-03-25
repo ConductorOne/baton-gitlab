@@ -69,7 +69,7 @@ func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 
 	var groupMembers []*gitlabSDK.GroupMember
 	if parentResourceID.ResourceType == groupResourceType.Id {
-		groupId, _, err = fromGroupResourceId(parentResourceID.Resource)
+		groupId, err = fromGroupResourceId(parentResourceID.Resource)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 		}

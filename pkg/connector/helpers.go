@@ -1,18 +1,5 @@
 package connector
 
-import (
-	"fmt"
-	"strings"
-)
-
-func toGroupResourceId(groupId, groupName string) string {
-	return fmt.Sprintf("%s/%s", groupId, groupName)
-}
-
-func fromGroupResourceId(groupResourceId string) (string, string, error) {
-	parts := strings.Split(groupResourceId, "/")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid group resource id: %s", groupResourceId)
-	}
-	return parts[0], parts[1], nil
+func fromGroupResourceId(groupResourceId string) (string, error) {
+	return groupResourceId, nil
 }
