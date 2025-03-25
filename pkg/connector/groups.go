@@ -48,7 +48,7 @@ func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2
 	return resourceSdk.NewGroupResource(
 		group.FullName,
 		groupResourceType,
-		strconv.Itoa(group.ID),
+		toGroupResourceId(strconv.Itoa(group.ID)),
 		[]resourceSdk.GroupTraitOption{
 			resourceSdk.WithGroupProfile(
 				profile,
@@ -128,7 +128,12 @@ func parentResourceIsParentGroup(parentGroupId int, parentResourceID *v2.Resourc
 		return true, nil
 	}
 
-	parentId, err := strconv.Atoi(parentResourceID.Resource)
+	parentIdSegments := strings.Split(parentResourceID.Resource, "/")
+	if len(parentIdSegments) < 2 {
+		return false, fmt.Errorf("error while segmenting the parentResourceID: %v It has less than 2 segments", parentResourceID)
+	}
+
+	parentId, err := strconv.Atoi(parentIdSegments[1])
 	if err != nil {
 		return false, err
 	}
