@@ -22,7 +22,6 @@ import (
 
 type groupBuilder struct {
 	*gitlab.Client
-	GroupsCache []*gitlabSDK.Group
 }
 
 var accessLevels = []gitlabSDK.AccessLevelValue{
@@ -78,14 +77,9 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		pageToken = pToken.Token
 	}
 
-	if len(o.GroupsCache) > 0 && pageToken == "" {
-		groups = o.GroupsCache
-	} else {
-		groups, res, err = o.ListGroups(ctx, pageToken)
-		if err != nil {
-			return nil, "", nil, err
-		}
-		o.loadIntoCache(groups)
+	groups, res, err = o.ListGroups(ctx, pageToken)
+	if err != nil {
+		return nil, "", nil, err
 	}
 
 	outResources := make([]*v2.Resource, 0, len(groups))
@@ -324,8 +318,4 @@ func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	}
 
 	return nil, nil
-}
-
-func (o *groupBuilder) loadIntoCache(groups []*gitlabSDK.Group) {
-	o.GroupsCache = append(o.GroupsCache, groups...)
 }
