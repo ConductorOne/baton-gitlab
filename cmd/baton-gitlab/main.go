@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector"
 	"github.com/conductorone/baton-sdk/pkg/config"
@@ -17,12 +18,26 @@ import (
 
 var version = "dev"
 
+func getConfigDir(name string) string {
+	return filepath.Join(os.Getenv("PROGRAMDATA"), "ConductorOne", name)
+}
 func main() {
 	ctx := context.Background()
 
+	connectorName := "baton-gitlab"
+
+	configPath := os.Getenv("BATON_CONFIG_PATH")
+	if configPath == "" && os.Getenv("PROGRAMDATA") != "" {
+		// Set BATON_CONFIG_PATH so that if we're running as a windows service, we use the correct config file
+		err := os.Setenv("BATON_CONFIG_PATH", filepath.Join(getConfigDir(connectorName), "config.yaml"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(1)
+		}
+	}
 	_, cmd, err := config.DefineConfiguration(
 		ctx,
-		"baton-gitlab",
+		connectorName,
 		getConnector,
 		field.Configuration{
 			Fields: ConfigurationFields,
