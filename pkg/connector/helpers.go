@@ -3,6 +3,8 @@ package connector
 import (
 	"fmt"
 	"strings"
+
+	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
 func toGroupResourceId(groupId string) string {
@@ -15,4 +17,12 @@ func fromGroupResourceId(groupResourceId string) (string, error) {
 		return "", fmt.Errorf("invalid group resource id: %s", groupResourceId)
 	}
 	return parts[1], nil
+}
+
+func parseAccessLevelFromEntitlementID(entitlementID string) (gitlabSDK.AccessLevelValue, error) {
+	parts := strings.Split(entitlementID, ":")
+	if len(parts) != 3 {
+		return 0, fmt.Errorf("invalid entitlement ID: %s", entitlementID)
+	}
+	return AccessLevel(parts[2]), nil
 }
