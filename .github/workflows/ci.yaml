@@ -137,7 +137,8 @@ jobs:
       - name: Check for grant before revoking
         run: |
           baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | \
-          jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+          jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\"" | \
+          grep true 
 
       - name: Revoke grants
         run: ./baton-gitlab --revoke-grant="${{ env.CONNECTOR_GRANT }}"
@@ -158,5 +159,6 @@ jobs:
         run: |
           ./baton-gitlab && \
           baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | \
-          jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+          jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\"" | \
+          grep true 
 
