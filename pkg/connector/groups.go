@@ -254,11 +254,10 @@ func (r *groupBuilder) Grant(
 		return nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
 
-	parts := strings.Split(entitlement.Id, ":")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid entitlement ID: %s", entitlement.Id)
+	accessLevelValue, err := parseAccessLevelFromEntitlementID(entitlement.Id)
+	if err != nil {
+		return nil, err
 	}
-	accessLevelValue := AccessLevel(parts[2])
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
 		l.Warn("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))

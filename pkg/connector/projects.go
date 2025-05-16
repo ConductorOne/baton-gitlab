@@ -9,7 +9,6 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
-
 	"github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
@@ -128,10 +127,23 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		nextPage = strconv.Itoa(res.NextPage)
 	}
 
+	groupId := resource.ParentResourceId
+	if groupId == nil {
+		return nil, "", nil, fmt.Errorf("project resource has no parent group")
+	}
+
 	for _, user := range users {
+		entitlementId := fmt.Sprintf("group:%s:%s", groupId.Resource, AccessLevelString(user.AccessLevel))
 		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("error creating principal ID: %w", err)
+		}
+
+		grantOptions := []grant.GrantOption{
+			grant.WithAnnotation(&v2.GrantExpandable{
+				EntitlementIds: []string{entitlementId},
+				Shallow:        true,
+			}),
 		}
 
 		outGrants = append(outGrants, grant.NewGrant(
@@ -139,7 +151,15 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 			AccessLevelString(user.AccessLevel),
 			principalId,
 		))
+
+		outGrants = append(outGrants, grant.NewGrant(
+			resource,
+			AccessLevelString(user.AccessLevel),
+			groupId,
+			grantOptions...,
+		))
 	}
+
 	return outGrants, nextPage, nil, nil
 }
 
@@ -149,7 +169,7 @@ func newProjectBuilder(client *gitlab.Client) *projectBuilder {
 	}
 }
 
-func (r *projectBuilder) Grant(
+func (o *projectBuilder) Grant(
 	ctx context.Context,
 	principal *v2.Resource,
 	entitlement *v2.Entitlement,
@@ -158,13 +178,16 @@ func (r *projectBuilder) Grant(
 	error,
 ) {
 	projectId := entitlement.Resource.Id.Resource
-	accessLevel := AccessLevel(entitlement.Slug)
+	accessLevelValue, err := parseAccessLevelFromEntitlementID(entitlement.Id)
+	if err != nil {
+		return nil, err
+	}
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("error converting user ID to int: %w", err)
 	}
 
-	_, err = r.AddProjectMember(ctx, projectId, userId, accessLevel)
+	_, err = o.AddProjectMember(ctx, projectId, userId, accessLevelValue)
 
 	if err != nil {
 		return nil, fmt.Errorf("error adding user to group: %w", err)
@@ -172,16 +195,16 @@ func (r *projectBuilder) Grant(
 	return nil, nil
 }
 
-func (r *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
 	projectId := grant.Entitlement.Resource.Id.Resource
 	userId, err := strconv.Atoi(grant.Principal.Id.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("error converting user ID to int: %w", err)
 	}
 
-	err = r.RemoveProjectMember(ctx, projectId, userId)
+	err = o.RemoveProjectMember(ctx, projectId, userId)
 	if err != nil {
-		return nil, fmt.Errorf("error removing user from group: %w", err)
+		return nil, fmt.Errorf("error removing user from project: %w", err)
 	}
 
 	return nil, nil
