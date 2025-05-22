@@ -55,10 +55,11 @@ jobs:
           --health-cmd "curl -sSf http://localhost:8080/users/sign_in || exit 1"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 20
+          --health-retries 30
+        env:
+          GITLAB_ROOT_PASSWORD: rootpassword123
 
     env:
-      BATON_LOG_LEVEL: debug
       GITLAB_URL: http://localhost:8080
       GITLAB_ROOT_PASSWORD: rootpassword123
 
@@ -75,50 +76,53 @@ jobs:
             sleep 10
           done
 
-      - name: Set root password
+      - name: Login and get cookie
         run: |
-          curl -X PUT "$GITLAB_URL/api/v4/users/1" \
-            -H "Content-Type: application/json" \
-            -H "PRIVATE-TOKEN: root" \
-            -d "{\"password\": \"$GITLAB_ROOT_PASSWORD\"}"
+          curl -c cookies.txt -d "user[login]=root&user[password]=$GITLAB_ROOT_PASSWORD" \
+            -X POST "$GITLAB_URL/users/sign_in" -o login.html
+          grep "Sign in" login.html && (echo "Login failed" && exit 1) || echo "Login succeeded"
 
-      - name: Get root access token
+      - name: Create Personal Access Token via API
         run: |
-          curl --request POST "$GITLAB_URL/oauth/token" \
-            --header "Content-Type: application/json" \
-            --data "{\"grant_type\": \"password\", \"username\": \"root\", \"password\": \"$GITLAB_ROOT_PASSWORD\"}" \
-            -o token.json
-          cat token.json
-          echo "BATON_ACCESS_TOKEN=$(jq -r '.access_token' token.json)" >> $GITHUB_ENV
+          curl -b cookies.txt -H "Content-Type: application/json" \
+            -d '{"name":"test-token","scopes":["api"]}' \
+            -X POST "$GITLAB_URL/api/v4/personal_access_tokens" -o pat.json
+          cat pat.json
+          TOKEN=$(jq -r '.token' pat.json)
+          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+            echo "Failed to create PAT"
+            exit 1
+          fi
+          echo "PAT=$TOKEN" >> $GITHUB_ENV
 
-      - name: Validate token
+      - name: Validate token works
         run: |
-          curl --fail --header "Authorization: Bearer $BATON_ACCESS_TOKEN" "$GITLAB_URL/api/v4/user"
+          curl --fail --header "PRIVATE-TOKEN: $PAT" "$GITLAB_URL/api/v4/user"
 
       - name: Setup test data
         run: |
-          TOKEN=$BATON_ACCESS_TOKEN
-          curl -H "Authorization: Bearer $TOKEN" \
+          TOKEN=$PAT
+          curl -H "PRIVATE-TOKEN: $TOKEN" \
             --data "name=test-group&path=test-group" \
             "$GITLAB_URL/api/v4/groups" -o group.json
           echo "GROUP_ID=$(jq -r '.id' group.json)" >> $GITHUB_ENV
-
-          curl -H "Authorization: Bearer $TOKEN" \
+          
+          curl -H "PRIVATE-TOKEN: $TOKEN" \
             --data "name=test-project&namespace_id=$(jq -r '.id' group.json)" \
             "$GITLAB_URL/api/v4/projects" -o project.json
           echo "PROJECT_ID=$(jq -r '.id' project.json)" >> $GITHUB_ENV
-
-          curl -H "Authorization: Bearer $TOKEN" \
-            --data "email=test@example.com&username=testuser&name=Test%20User&password=Test1234" \
+          
+          curl -H "PRIVATE-TOKEN: $TOKEN" \
+            --data "email=test@example.com&username=testuser&name=Test User&password=Test1234" \
             "$GITLAB_URL/api/v4/users" -o user.json
           echo "USER_ID=$(jq -r '.id' user.json)" >> $GITHUB_ENV
-
+          
           curl --request POST "$GITLAB_URL/api/v4/projects/$(jq -r '.id' project.json)/members" \
-            --header "Authorization: Bearer $TOKEN" \
+            --header "PRIVATE-TOKEN: $TOKEN" \
             --data "user_id=$(jq -r '.id' user.json)&access_level=20"
-
+          
           curl --request POST "$GITLAB_URL/api/v4/groups/$(jq -r '.id' group.json)/members" \
-            --header "Authorization: Bearer $TOKEN" \
+            --header "PRIVATE-TOKEN: $TOKEN" \
             --data "user_id=$(jq -r '.id' user.json)&access_level=40"
 
       - name: Checkout code
@@ -135,10 +139,10 @@ jobs:
       - name: Install baton
         run: ./scripts/get-baton.sh && sudo mv baton /usr/local/bin
 
-      - name: Set Baton GitLab environment variables
+      - name: Export Baton env vars
         run: |
-          echo "BATON_GITLAB_BASE_URL=http://localhost:8080" >> $GITHUB_ENV
-          echo "BATON_GITLAB_BEARER_TOKEN=$BATON_ACCESS_TOKEN" >> $GITHUB_ENV   
+          echo "BATON_GITLAB_BASE_URL=$GITLAB_URL" >> $GITHUB_ENV
+          echo "BATON_GITLAB_BEARER_TOKEN=$PAT" >> $GITHUB_ENV
 
       # PROJECT tests: revoke, check, grant
       - name: Revoke project grant
@@ -229,9 +233,8 @@ jobs:
           echo "CONNECTOR_PRINCIPAL_TYPE=${{ matrix.target.principal_type }}" >> $GITHUB_ENV
 
       - name: Run baton-gitlab
-        run: ./baton-gitlab \
-          --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-          --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}"
+        run: ./baton-gitlab --access-token="${{ env.BATON_ACCESS_TOKEN }}" --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}"
+
 
       - name: Check for grant before revoking
         run: |
