@@ -47,53 +47,46 @@ jobs:
     runs-on: ubuntu-latest
     services:
       gitlab:
-        image: gitlab/gitlab-ce:latest
-        ports:
-          - 8080:80
+        image: gitlab/gitlab-ee:latest
         options: >-
-          --hostname localhost
-          --health-cmd "curl -sSf http://localhost:8080/users/sign_in || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 30
+          --health-cmd="curl -sSf http://gitlab/-/readiness || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=30
         env:
-          GITLAB_ROOT_PASSWORD: rootpassword123
+          GITLAB_OMNIBUS_CONFIG: |
+            external_url 'http://gitlab'
+            gitlab_rails['initial_root_password'] = 'A9v!x7#Fp2RzQ$Lm'
 
     env:
-      GITLAB_URL: http://localhost:8080
-      GITLAB_ROOT_PASSWORD: rootpassword123
+      GITLAB_URL: http://gitlab
+      GITLAB_ROOT_PASSWORD: A9v!x7#Fp2RzQ$Lm
 
     steps:
-      - name: Install tools
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl
 
       - name: Wait for GitLab to be ready
         run: |
-          until curl -sSf "$GITLAB_URL/users/sign_in"; do
+          until curl -sSf "$GITLAB_URL/-/readiness"; do
             echo "Waiting for GitLab..."
             sleep 10
           done
 
-      - name: Login and get cookie
+      - name: Create Personal Access Token via API session
+        id: create_token
         run: |
-          curl -c cookies.txt -d "user[login]=root&user[password]=$GITLAB_ROOT_PASSWORD" \
-            -X POST "$GITLAB_URL/users/sign_in" -o login.html
-          grep "Sign in" login.html && (echo "Login failed" && exit 1) || echo "Login succeeded"
-
-      - name: Create Personal Access Token via API
-        run: |
-          curl -b cookies.txt -H "Content-Type: application/json" \
-            -d '{"name":"test-token","scopes":["api"]}' \
-            -X POST "$GITLAB_URL/api/v4/personal_access_tokens" -o pat.json
-          cat pat.json
-          TOKEN=$(jq -r '.token' pat.json)
-          if [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
-            echo "Failed to create PAT"
+          TOKEN=$(curl -s --request POST "$GITLAB_URL/api/v4/session" \
+            --header "Content-Type: application/json" \
+            --data "{\"login\":\"root\",\"password\":\"$GITLAB_ROOT_PASSWORD\"}" | jq -r .private_token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "Failed to get token"
             exit 1
           fi
           echo "PAT=$TOKEN" >> $GITHUB_ENV
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
       - name: Validate token works
         run: |
@@ -102,25 +95,31 @@ jobs:
       - name: Setup test data
         run: |
           TOKEN=$PAT
+          
+          # Create group
           curl -H "PRIVATE-TOKEN: $TOKEN" \
             --data "name=test-group&path=test-group" \
             "$GITLAB_URL/api/v4/groups" -o group.json
           echo "GROUP_ID=$(jq -r '.id' group.json)" >> $GITHUB_ENV
           
+          # Create project inside group
           curl -H "PRIVATE-TOKEN: $TOKEN" \
             --data "name=test-project&namespace_id=$(jq -r '.id' group.json)" \
             "$GITLAB_URL/api/v4/projects" -o project.json
           echo "PROJECT_ID=$(jq -r '.id' project.json)" >> $GITHUB_ENV
           
+          # Create user
           curl -H "PRIVATE-TOKEN: $TOKEN" \
             --data "email=test@example.com&username=testuser&name=Test User&password=Test1234" \
             "$GITLAB_URL/api/v4/users" -o user.json
           echo "USER_ID=$(jq -r '.id' user.json)" >> $GITHUB_ENV
           
+          # Add user to project (Reporter access)
           curl --request POST "$GITLAB_URL/api/v4/projects/$(jq -r '.id' project.json)/members" \
             --header "PRIVATE-TOKEN: $TOKEN" \
             --data "user_id=$(jq -r '.id' user.json)&access_level=20"
           
+          # Add user to group (Maintainer access)
           curl --request POST "$GITLAB_URL/api/v4/groups/$(jq -r '.id' group.json)/members" \
             --header "PRIVATE-TOKEN: $TOKEN" \
             --data "user_id=$(jq -r '.id' user.json)&access_level=40"
@@ -128,7 +127,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Go
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: 1.23.x
@@ -136,15 +135,17 @@ jobs:
       - name: Build baton-gitlab
         run: go build ./cmd/baton-gitlab
 
-      - name: Install baton
-        run: ./scripts/get-baton.sh && sudo mv baton /usr/local/bin
+      - name: Install baton CLI
+        run: |
+          ./scripts/get-baton.sh
+          sudo mv baton /usr/local/bin
 
       - name: Export Baton env vars
         run: |
           echo "BATON_GITLAB_BASE_URL=$GITLAB_URL" >> $GITHUB_ENV
           echo "BATON_GITLAB_BEARER_TOKEN=$PAT" >> $GITHUB_ENV
 
-      # PROJECT tests: revoke, check, grant
+      # Project grant tests
       - name: Revoke project grant
         run: ./baton-gitlab --revoke-grant="project:${{ env.PROJECT_ID }}:Reporter:user:${{ env.USER_ID }}"
 
@@ -166,7 +167,7 @@ jobs:
           baton grants --entitlement="project:${{ env.PROJECT_ID }}:Reporter" --output-format=json | \
             jq --exit-status ".grants[].principal.id.resource == \"${{ env.USER_ID }}\""
 
-      # GROUP tests: revoke, check, grant
+      # Group grant tests
       - name: Revoke group grant
         run: ./baton-gitlab --revoke-grant="group:${{ env.GROUP_ID }}:Maintainer:user:${{ env.USER_ID }}"
 
@@ -190,25 +191,17 @@ jobs:
 
   test-cloud-version:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        target:
-          - name: groups
-            grant: "group:g/100021949:Maintainer:user:25334081"
-            entitlement: "group:g/100021949:Maintainer"
-            principal: "25334081"
-            principal_type: "user"
-          - name: projects
-            grant: "project:65850627:Reporter:user:25334081"
-            entitlement: "project:65850627:Reporter"
-            principal: "25334081"
-            principal_type: "user"
-
     env:
       BATON_LOG_LEVEL: debug
-      BATON_ACCESS_TOKEN: "${{ secrets.BATON_ACCESS_TOKEN }}"
-      BATON_GITLAB_GROUP_FLAG: "${{ vars.GROUP_FLAG }}"
+      BATON_ACCESS_TOKEN: ${{ secrets.BATON_ACCESS_TOKEN }}
+      BATON_GITLAB_GROUP_FLAG: ${{ vars.GROUP_FLAG }}
+      GROUP_ENTITLEMENT: ${{ vars.GROUP_ENTITLEMENT }}
+      GROUP_FLAG: ${{ vars.GROUP_FLAG }}
+      GROUP_GRANT: ${{ vars.GROUP_GRANT }}
+      PRINCIPAL: ${{ vars.PRINCIPAL }}
+      PROJECT_ENTITLEMENT: ${{ vars.PROJECT_ENTITLEMENT }}
+      PROJECT_GRANT: ${{ vars.PROJECT_GRANT }}
+      PRINCIPAL_TYPE: ${{ vars.PRINCIPAL_TYPE }}
 
     steps:
       - name: Set up Go
@@ -222,64 +215,45 @@ jobs:
       - name: Build baton-gitlab
         run: go build ./cmd/baton-gitlab
 
+      - name: Run baton-gitlab (generate sync.c1z)
+        run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}
+
       - name: Install baton
-        run: ./scripts/get-baton.sh && sudo mv baton /usr/local/bin
+        run: ./scripts/get-baton.sh && mv baton /usr/local/bin
 
-      - name: Set matrix variables
-        run: |
-          echo "CONNECTOR_GRANT=${{ matrix.target.grant }}" >> $GITHUB_ENV
-          echo "CONNECTOR_ENTITLEMENT=${{ matrix.target.entitlement }}" >> $GITHUB_ENV
-          echo "CONNECTOR_PRINCIPAL=${{ matrix.target.principal }}" >> $GITHUB_ENV
-          echo "CONNECTOR_PRINCIPAL_TYPE=${{ matrix.target.principal_type }}" >> $GITHUB_ENV
+      - name: Grant entitlement Group
+        run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }} --grant-entitlement=${{ env.GROUP_ENTITLEMENT }} --grant-principal=${{ env.PRINCIPAL }} --grant-principal-type=${{ env.PRINCIPAL_TYPE }}
 
-      - name: Run baton-gitlab
-        run: ./baton-gitlab --access-token="${{ env.BATON_ACCESS_TOKEN }}" --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}"
+      - name: Re-sync the data from GitLabCloud
+        run:  ./baton-gitlab --access-token=${{env.BATON_ACCESS_TOKEN}} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}
 
+      - name: Check grants was granted
+        run: baton grants --entitlement="${{ env.GROUP_ENTITLEMENT }}" --output-format=json | jq --exit-status '.grants[].principal.id.resource == "${{ env.PRINCIPAL }}"' | grep true
 
-      - name: Check for grant before revoking
-        run: |
-          baton grants \
-            --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-            --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}" \
-            --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" \
-            --output-format=json | \
-          jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+      - name: Revoke grants Group
+        run: ./baton-gitlab --access-token=${{env.BATON_ACCESS_TOKEN}} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }} --revoke-grant="${{env.GROUP_GRANT}}"
 
-      - name: Revoke grants
-        run: ./baton-gitlab \
-          --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-          --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}" \
-          --revoke-grant="${{ env.CONNECTOR_GRANT }}"
+      - name: Re-sync the data from GitLabCloud
+        run:  ./baton-gitlab --access-token=${{env.BATON_ACCESS_TOKEN}} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}
 
       - name: Check grant was revoked
-        run: |
-          ./baton-gitlab \
-            --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-            --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}" && \
-          baton grants \
-            --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-            --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}" \
-            --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" \
-            --output-format=json | \
-          jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.CONNECTOR_PRINCIPAL }}\" else . end"
+        run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }} && baton grants --entitlement="${{ env.GROUP_ENTITLEMENT }}" --output-format=json | jq --exit-status 'if .grants then .grants[]?.principal.id.resource != "${{ env.PRINCIPAL }}" else . end'
 
-      - name: Grant entitlement
-        run: ./baton-gitlab \
-          --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-          --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}" \
-          --grant-entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" \
-          --grant-principal="${{ env.CONNECTOR_PRINCIPAL }}" \
-          --grant-principal-type="${{ env.CONNECTOR_PRINCIPAL_TYPE }}"
+      - name: Grant entitlement Project
+        run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }} --grant-entitlement=${{ env.PROJECT_ENTITLEMENT }} --grant-principal=${{ env.PRINCIPAL }} --grant-principal-type=${{ env.PRINCIPAL_TYPE }}
 
-      - name: Check grant was re-granted
-        run: |
-          ./baton-gitlab \
-            --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-            --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}" && \
-          baton grants \
-            --access-token="${{ env.BATON_ACCESS_TOKEN }}" \
-            --account-creation-group="${{ env.BATON_GITLAB_GROUP_FLAG }}" \
-            --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" \
-            --output-format=json | \
-          jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+      - name: Re-sync the data from GitLabCloud
+        run:  ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}
+
+      - name: Check grants was granted
+        run: baton grants --entitlement="${{ env.PROJECT_ENTITLEMENT }}" --output-format=json | jq --exit-status '.grants[].principal.id.resource == "${{ env.PRINCIPAL }}"' | grep true
+
+      - name: Revoke grants Project
+        run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}  --revoke-grant="${{env.PROJECT_GRANT}}"
+
+      - name: Re-sync the data from GitLabCloud
+        run:  ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}
+
+      - name: Check grant was revoked
+        run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}  && baton grants --entitlement="${{ env.PROJECT_ENTITLEMENT }}" --output-format=json | jq --exit-status 'if .grants then .grants[]?.principal.id.resource != "${{ env.PRINCIPAL }}" else . end'
 
