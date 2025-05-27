@@ -437,6 +437,13 @@ func userResource(user any) (*v2.Resource, error) {
 		return nil, fmt.Errorf("unknown user type: %T", user)
 	}
 
+	userStatus := v2.UserTrait_Status_STATUS_ENABLED
+	if state == "blocked" || state == "deactivated" || state == "ldap_blocked" || state == "banned" {
+		userStatus = v2.UserTrait_Status_STATUS_DISABLED
+	} else if state == "pending" {
+		userStatus = v2.UserTrait_Status_STATUS_UNSPECIFIED
+	}
+
 	profile := map[string]interface{}{
 		"first_name":   name,
 		"username":     username,
@@ -448,7 +455,7 @@ func userResource(user any) (*v2.Resource, error) {
 
 	userTraitOptions := []resourceSdk.UserTraitOption{
 		resourceSdk.WithEmail(email, true),
-		resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_ENABLED),
+		resourceSdk.WithStatus(userStatus),
 		resourceSdk.WithUserProfile(profile),
 		resourceSdk.WithUserLogin(email),
 	}

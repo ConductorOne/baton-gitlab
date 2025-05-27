@@ -41,6 +41,10 @@ baton resources
 - Groups
 - Projects
 
+`baton-gitlab` supports account creation and entitlement provisioning for following resources:
+- Groups
+- Projects
+
 # Contributing, Support and Issues
 
 We started Baton because we were tired of taking screenshots and manually
