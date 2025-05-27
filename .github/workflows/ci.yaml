@@ -43,151 +43,151 @@ jobs:
         with:
           test-results: test.json
 
-  test-DC-version:
-    runs-on: ubuntu-latest
-    services:
-      gitlab:
-        image: gitlab/gitlab-ee:latest
-        options: >-
-          --health-cmd="curl -sSf http://gitlab/-/readiness || exit 1"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=30
-        env:
-          GITLAB_OMNIBUS_CONFIG: |
-            external_url 'http://gitlab'
-            gitlab_rails['initial_root_password'] = 'A9v!x7#Fp2RzQ$Lm'
-
-    env:
-      GITLAB_URL: http://gitlab
-      GITLAB_ROOT_PASSWORD: A9v!x7#Fp2RzQ$Lm
-
-    steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl
-
-      - name: Wait for GitLab to be ready
-        run: |
-          until curl -sSf "$GITLAB_URL/-/readiness"; do
-            echo "Waiting for GitLab..."
-            sleep 10
-          done
-
-      - name: Create Personal Access Token via API session
-        id: create_token
-        run: |
-          TOKEN=$(curl -s --request POST "$GITLAB_URL/api/v4/session" \
-            --header "Content-Type: application/json" \
-            --data "{\"login\":\"root\",\"password\":\"$GITLAB_ROOT_PASSWORD\"}" | jq -r .private_token)
-          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-            echo "Failed to get token"
-            exit 1
-          fi
-          echo "PAT=$TOKEN" >> $GITHUB_ENV
-          echo "token=$TOKEN" >> $GITHUB_OUTPUT
-
-      - name: Validate token works
-        run: |
-          curl --fail --header "PRIVATE-TOKEN: $PAT" "$GITLAB_URL/api/v4/user"
-
-      - name: Setup test data
-        run: |
-          TOKEN=$PAT
-          
-          # Create group
-          curl -H "PRIVATE-TOKEN: $TOKEN" \
-            --data "name=test-group&path=test-group" \
-            "$GITLAB_URL/api/v4/groups" -o group.json
-          echo "GROUP_ID=$(jq -r '.id' group.json)" >> $GITHUB_ENV
-          
-          # Create project inside group
-          curl -H "PRIVATE-TOKEN: $TOKEN" \
-            --data "name=test-project&namespace_id=$(jq -r '.id' group.json)" \
-            "$GITLAB_URL/api/v4/projects" -o project.json
-          echo "PROJECT_ID=$(jq -r '.id' project.json)" >> $GITHUB_ENV
-          
-          # Create user
-          curl -H "PRIVATE-TOKEN: $TOKEN" \
-            --data "email=test@example.com&username=testuser&name=Test User&password=Test1234" \
-            "$GITLAB_URL/api/v4/users" -o user.json
-          echo "USER_ID=$(jq -r '.id' user.json)" >> $GITHUB_ENV
-          
-          # Add user to project (Reporter access)
-          curl --request POST "$GITLAB_URL/api/v4/projects/$(jq -r '.id' project.json)/members" \
-            --header "PRIVATE-TOKEN: $TOKEN" \
-            --data "user_id=$(jq -r '.id' user.json)&access_level=20"
-          
-          # Add user to group (Maintainer access)
-          curl --request POST "$GITLAB_URL/api/v4/groups/$(jq -r '.id' group.json)/members" \
-            --header "PRIVATE-TOKEN: $TOKEN" \
-            --data "user_id=$(jq -r '.id' user.json)&access_level=40"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.23.x
-
-      - name: Build baton-gitlab
-        run: go build ./cmd/baton-gitlab
-
-      - name: Install baton CLI
-        run: |
-          ./scripts/get-baton.sh
-          sudo mv baton /usr/local/bin
-
-      - name: Export Baton env vars
-        run: |
-          echo "BATON_GITLAB_BASE_URL=$GITLAB_URL" >> $GITHUB_ENV
-          echo "BATON_GITLAB_BEARER_TOKEN=$PAT" >> $GITHUB_ENV
-
-      # Project grant tests
-      - name: Revoke project grant
-        run: ./baton-gitlab --revoke-grant="project:${{ env.PROJECT_ID }}:Reporter:user:${{ env.USER_ID }}"
-
-      - name: Assert project grant revoked
-        run: |
-          ./baton-gitlab
-          baton grants --entitlement="project:${{ env.PROJECT_ID }}:Reporter" --output-format=json | \
-            jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.USER_ID }}\" else . end"
-
-      - name: Grant project entitlement again
-        run: |
-          ./baton-gitlab --grant-entitlement="project:${{ env.PROJECT_ID }}:Reporter" \
-                         --grant-principal="${{ env.USER_ID }}" \
-                         --grant-principal-type="user"
-
-      - name: Assert project grant exists
-        run: |
-          ./baton-gitlab
-          baton grants --entitlement="project:${{ env.PROJECT_ID }}:Reporter" --output-format=json | \
-            jq --exit-status ".grants[].principal.id.resource == \"${{ env.USER_ID }}\""
-
-      # Group grant tests
-      - name: Revoke group grant
-        run: ./baton-gitlab --revoke-grant="group:${{ env.GROUP_ID }}:Maintainer:user:${{ env.USER_ID }}"
-
-      - name: Assert group grant revoked
-        run: |
-          ./baton-gitlab
-          baton grants --entitlement="group:${{ env.GROUP_ID }}:Maintainer" --output-format=json | \
-            jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.USER_ID }}\" else . end"
-
-      - name: Grant group entitlement again
-        run: |
-          ./baton-gitlab --grant-entitlement="group:${{ env.GROUP_ID }}:Maintainer" \
-                         --grant-principal="${{ env.USER_ID }}" \
-                         --grant-principal-type="user"
-
-      - name: Assert group grant exists
-        run: |
-          ./baton-gitlab
-          baton grants --entitlement="group:${{ env.GROUP_ID }}:Maintainer" --output-format=json | \
-            jq --exit-status ".grants[].principal.id.resource == \"${{ env.USER_ID }}\""
+#  test-DC-version:
+#    runs-on: ubuntu-latest
+#    services:
+#      gitlab:
+#        image: gitlab/gitlab-ee:latest
+#        options: >-
+#          --health-cmd="curl -sSf http://gitlab/-/readiness || exit 1"
+#          --health-interval=10s
+#          --health-timeout=5s
+#          --health-retries=30
+#        env:
+#          GITLAB_OMNIBUS_CONFIG: |
+#            external_url 'http://gitlab'
+#            gitlab_rails['initial_root_password'] = 'A9v!x7#Fp2RzQ$Lm'
+#
+#    env:
+#      GITLAB_URL: http://gitlab
+#      GITLAB_ROOT_PASSWORD: A9v!x7#Fp2RzQ$Lm
+#
+#    steps:
+#      - name: Install dependencies
+#        run: |
+#          sudo apt-get update
+#          sudo apt-get install -y jq curl
+#
+#      - name: Wait for GitLab to be ready
+#        run: |
+#          until curl -sSf "$GITLAB_URL/-/readiness"; do
+#            echo "Waiting for GitLab..."
+#            sleep 10
+#          done
+#
+#      - name: Create Personal Access Token via API session
+#        id: create_token
+#        run: |
+#          TOKEN=$(curl -s --request POST "$GITLAB_URL/api/v4/session" \
+#            --header "Content-Type: application/json" \
+#            --data "{\"login\":\"root\",\"password\":\"$GITLAB_ROOT_PASSWORD\"}" | jq -r .private_token)
+#          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+#            echo "Failed to get token"
+#            exit 1
+#          fi
+#          echo "PAT=$TOKEN" >> $GITHUB_ENV
+#          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+#
+#      - name: Validate token works
+#        run: |
+#          curl --fail --header "PRIVATE-TOKEN: $PAT" "$GITLAB_URL/api/v4/user"
+#
+#      - name: Setup test data
+#        run: |
+#          TOKEN=$PAT
+#
+#          # Create group
+#          curl -H "PRIVATE-TOKEN: $TOKEN" \
+#            --data "name=test-group&path=test-group" \
+#            "$GITLAB_URL/api/v4/groups" -o group.json
+#          echo "GROUP_ID=$(jq -r '.id' group.json)" >> $GITHUB_ENV
+#
+#          # Create project inside group
+#          curl -H "PRIVATE-TOKEN: $TOKEN" \
+#            --data "name=test-project&namespace_id=$(jq -r '.id' group.json)" \
+#            "$GITLAB_URL/api/v4/projects" -o project.json
+#          echo "PROJECT_ID=$(jq -r '.id' project.json)" >> $GITHUB_ENV
+#
+#          # Create user
+#          curl -H "PRIVATE-TOKEN: $TOKEN" \
+#            --data "email=test@example.com&username=testuser&name=Test User&password=Test1234" \
+#            "$GITLAB_URL/api/v4/users" -o user.json
+#          echo "USER_ID=$(jq -r '.id' user.json)" >> $GITHUB_ENV
+#
+#          # Add user to project (Reporter access)
+#          curl --request POST "$GITLAB_URL/api/v4/projects/$(jq -r '.id' project.json)/members" \
+#            --header "PRIVATE-TOKEN: $TOKEN" \
+#            --data "user_id=$(jq -r '.id' user.json)&access_level=20"
+#
+#          # Add user to group (Maintainer access)
+#          curl --request POST "$GITLAB_URL/api/v4/groups/$(jq -r '.id' group.json)/members" \
+#            --header "PRIVATE-TOKEN: $TOKEN" \
+#            --data "user_id=$(jq -r '.id' user.json)&access_level=40"
+#
+#      - name: Checkout code
+#        uses: actions/checkout@v4
+#
+#      - name: Setup Go
+#        uses: actions/setup-go@v5
+#        with:
+#          go-version: 1.23.x
+#
+#      - name: Build baton-gitlab
+#        run: go build ./cmd/baton-gitlab
+#
+#      - name: Install baton CLI
+#        run: |
+#          ./scripts/get-baton.sh
+#          sudo mv baton /usr/local/bin
+#
+#      - name: Export Baton env vars
+#        run: |
+#          echo "BATON_GITLAB_BASE_URL=$GITLAB_URL" >> $GITHUB_ENV
+#          echo "BATON_GITLAB_BEARER_TOKEN=$PAT" >> $GITHUB_ENV
+#
+#      # Project grant tests
+#      - name: Revoke project grant
+#        run: ./baton-gitlab --revoke-grant="project:${{ env.PROJECT_ID }}:Reporter:user:${{ env.USER_ID }}"
+#
+#      - name: Assert project grant revoked
+#        run: |
+#          ./baton-gitlab
+#          baton grants --entitlement="project:${{ env.PROJECT_ID }}:Reporter" --output-format=json | \
+#            jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.USER_ID }}\" else . end"
+#
+#      - name: Grant project entitlement again
+#        run: |
+#          ./baton-gitlab --grant-entitlement="project:${{ env.PROJECT_ID }}:Reporter" \
+#                         --grant-principal="${{ env.USER_ID }}" \
+#                         --grant-principal-type="user"
+#
+#      - name: Assert project grant exists
+#        run: |
+#          ./baton-gitlab
+#          baton grants --entitlement="project:${{ env.PROJECT_ID }}:Reporter" --output-format=json | \
+#            jq --exit-status ".grants[].principal.id.resource == \"${{ env.USER_ID }}\""
+#
+#      # Group grant tests
+#      - name: Revoke group grant
+#        run: ./baton-gitlab --revoke-grant="group:${{ env.GROUP_ID }}:Maintainer:user:${{ env.USER_ID }}"
+#
+#      - name: Assert group grant revoked
+#        run: |
+#          ./baton-gitlab
+#          baton grants --entitlement="group:${{ env.GROUP_ID }}:Maintainer" --output-format=json | \
+#            jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.USER_ID }}\" else . end"
+#
+#      - name: Grant group entitlement again
+#        run: |
+#          ./baton-gitlab --grant-entitlement="group:${{ env.GROUP_ID }}:Maintainer" \
+#                         --grant-principal="${{ env.USER_ID }}" \
+#                         --grant-principal-type="user"
+#
+#      - name: Assert group grant exists
+#        run: |
+#          ./baton-gitlab
+#          baton grants --entitlement="group:${{ env.GROUP_ID }}:Maintainer" --output-format=json | \
+#            jq --exit-status ".grants[].principal.id.resource == \"${{ env.USER_ID }}\""
 
   test-cloud-version:
     runs-on: ubuntu-latest

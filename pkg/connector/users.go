@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -273,7 +274,6 @@ func (u *userBuilder) createCloudUser(
 	}
 
 	var userRes *v2.Resource
-
 	if user != nil {
 		userRes, err = userResource(user)
 		if err != nil {
@@ -407,6 +407,7 @@ func userResource(user any) (*v2.Resource, error) {
 	var name string
 	var state string
 	var accessLevel int
+	var lastLogin time.Time
 
 	switch user := user.(type) {
 	case *gitlabSDK.GroupMember:
@@ -429,6 +430,9 @@ func userResource(user any) (*v2.Resource, error) {
 		state = user.State
 		name = user.Name
 		username = user.Username
+		if user.LastActivityOn != nil && !time.Time(*user.LastActivityOn).IsZero() {
+			lastLogin = time.Time(*user.LastActivityOn)
+		}
 	default:
 		return nil, fmt.Errorf("unknown user type: %T", user)
 	}
@@ -446,7 +450,11 @@ func userResource(user any) (*v2.Resource, error) {
 		resourceSdk.WithEmail(email, true),
 		resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_ENABLED),
 		resourceSdk.WithUserProfile(profile),
-		resourceSdk.WithUserLogin(username),
+		resourceSdk.WithUserLogin(email),
+	}
+
+	if !lastLogin.IsZero() {
+		userTraitOptions = append(userTraitOptions, resourceSdk.WithLastLogin(lastLogin))
 	}
 
 	return resourceSdk.NewUserResource(
