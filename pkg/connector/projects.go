@@ -190,7 +190,7 @@ func (o *projectBuilder) Grant(
 	_, err = o.AddProjectMember(ctx, projectId, userId, accessLevelValue)
 
 	if err != nil {
-		return nil, fmt.Errorf("error adding user to group: %w", err)
+		return nil, fmt.Errorf("error adding user to project: %w", err)
 	}
 	return nil, nil
 }
