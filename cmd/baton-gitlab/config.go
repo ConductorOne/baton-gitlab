@@ -19,7 +19,7 @@ var (
 	)
 	AccountCreationGroup = field.StringField(
 		"account-creation-group",
-		field.WithDescription("The group indicated will be used as a default group for the new users. Required for account creation capability."),
+		field.WithDescription("The group indicated will be used as a default group for the new users. Required for account creation capability in the Cloud Version."),
 		field.WithRequired(false),
 	)
 

@@ -2,9 +2,57 @@
 
 # `baton-gitlab` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-gitlab.svg)](https://pkg.go.dev/github.com/conductorone/baton-gitlab) ![main ci](https://github.com/conductorone/baton-gitlab/actions/workflows/main.yaml/badge.svg)
 
-`baton-gitlab` is a connector for built using the [Baton SDK](https://github.com/conductorone/baton-sdk).
+`baton-gitlab` is a connector for  [GitLab](https://gitlab.com/) built using the [Baton SDK](https://github.com/conductorone/baton-sdk).
 
 Check out [Baton](https://github.com/conductorone/baton) to learn more the project in general.
+
+## Prerequisites
+
+To use this connector, you will need different things depending on which version you want to use (DC-SaaS):
+
+- DC version (on-premise/self-hosted): you need an API key with the api scope enabled, which is indicated by the `--access-token` flag and a base url with the `--base-url` flag.
+  For connecting to https://example.local you should do:
+```
+            baton-gitlab --access-token abcdefghij1234567890 --base-url https://example.local
+```
+
+- SaaS version (Cloud): you need an API key with the api scope enabled, which is indicated by the `--access-token` flag and a group already created in gitlab for account creation and synchronization with the `--account-creation-group` flag.
+  For connecting to https://gitlab.com you should do:
+```
+            baton-gitlab --access-token abcdefghij1234567890 --account-creation-group example-group
+```
+
+## Connector capabilities
+- Sync Users, projects and groups.
+
+- Supports Account provisioning:
+  When you creating and new account, the following fields are required:
+    - Name: The name of the user.
+      Example: Name Example
+    - Email Address: The user email address.
+      Example: email@example.com
+    - Username: The username to be used by the user.
+      Example: Username Example
+
+  IMPORTANT NOTE: Account provisioning is different for the DC and Cloud versions:
+  -DC version (on-premise/self-hosted)= A separate user will be created to which entitlements can be assigned and revoked.
+  -Cloud version= An invitation to the user's email address will be created, if the user has a gitlab account, in the next synchronization the new account will be automatically added,
+  otherwise if the user does not have a gitlab account, a pending invitation resource will be created until the user creates a gitlab account.
+  When the account is created, it will always be added to the group that is assigned in the flag.
+
+- Supports Entitlements provisioning
+
+- Supports User usage only for the DC version (on-premise/self-hosted)
+
+- NOTE: in the cloud version, it is not possible to obtain the data of the attributes mail and last login of the users,
+  because admin permissions are needed and in the cloud version they do not exist.
+  https://docs.gitlab.com/api/users/
+
+## Where can I find my API Key?
+1- Log in gitlab.com o in your base url, then go to the top left, click on the user emoticon, a popup menu will open, click on edit profile.
+2- In the dashboard to the left of User settings, click on access tokens, and in the list of tokens that appears, click on add new token.
+3- In the new token creation options it is very important in select scopes to set the api item to active.
+4- Add a name to the token, and create.
 
 # Getting Started
 

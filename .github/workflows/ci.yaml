@@ -11,9 +11,9 @@ jobs:
         with:
           go-version: 1.23.x
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
       - name: Run linters
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           args: --timeout=3m
@@ -43,6 +43,7 @@ jobs:
         with:
           test-results: test.json
 
+#  this test is commented because it fails to run due to lack of memory in ci test.
 #  test-DC-version:
 #    runs-on: ubuntu-latest
 #    services:

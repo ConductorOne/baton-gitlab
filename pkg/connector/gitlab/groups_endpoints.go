@@ -3,6 +3,7 @@ package gitlab
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
@@ -123,7 +124,8 @@ func (o *Client) InviteGroupMember(ctx context.Context, groupId, userEmail strin
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return err
+		body, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("failed to invite user: status=%d body=%s", res.StatusCode, string(body))
 	}
 
 	return nil
