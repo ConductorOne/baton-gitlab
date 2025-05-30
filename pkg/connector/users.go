@@ -139,13 +139,10 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 			return nil, nil, err
 		}
 
-		activeEmails := make(map[string]struct{})
 		for _, member := range projectMembers {
-			if member.Email != "" {
-				activeEmails[member.Email] = struct{}{}
-			}
 			users = append(users, member)
 		}
+
 	default:
 		return nil, nil, fmt.Errorf("unsupported parent resource type: %s", parentResourceID.ResourceType)
 	}
@@ -254,21 +251,7 @@ func (u *userBuilder) createCloudUser(
 		}
 	}
 
-	var pendingInvite *gitlabSDK.PendingInvite
 	if user == nil {
-		pendingInvites, _, err := u.Invites.ListPendingGroupInvitations(groupID, nil, gitlabSDK.WithContext(ctx))
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to list pending invitations: %w", err)
-		}
-		for _, invite := range pendingInvites {
-			if invite.InviteEmail == email {
-				pendingInvite = invite
-				break
-			}
-		}
-	}
-
-	if user == nil && pendingInvite == nil {
 		err = u.InviteGroupMember(ctx, groupID, email, gitlabSDK.GuestPermissions)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to invite user to group: %w", err)
