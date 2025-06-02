@@ -124,7 +124,10 @@ func (o *Client) InviteGroupMember(ctx context.Context, groupId, userEmail strin
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		body, _ := io.ReadAll(res.Body)
+		body, readErr := io.ReadAll(res.Body)
+		if readErr != nil {
+			return fmt.Errorf("failed to invite user: status=%d, could not read response body: %w", res.StatusCode, readErr)
+		}
 		return fmt.Errorf("failed to invite user: status=%d body=%s", res.StatusCode, string(body))
 	}
 

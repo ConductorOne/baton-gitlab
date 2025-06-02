@@ -109,11 +109,7 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 			return nil, nil, err
 		}
 
-		activeEmails := make(map[string]struct{})
 		for _, member := range groupMembers {
-			if member.Email != "" {
-				activeEmails[member.Email] = struct{}{}
-			}
 			users = append(users, member)
 		}
 
@@ -123,11 +119,9 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		}
 
 		for _, invite := range pending {
-			if invite.InviteEmail == "" {
-				continue
-			}
 			users = append(users, invite)
 		}
+
 	case projectResourceType.Id:
 		var projectMembers []*gitlabSDK.ProjectMember
 		if pToken.Token == "" {
