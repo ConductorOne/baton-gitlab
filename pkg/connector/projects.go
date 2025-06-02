@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -177,6 +178,10 @@ func (o *projectBuilder) Grant(
 	annotations.Annotations,
 	error,
 ) {
+	if strings.HasPrefix(principal.Id.Resource, pendingInvitationUser) {
+		return nil, fmt.Errorf("entitlement cannot be granted: user %q has not yet accepted the invitation to gitlab", principal.Id.Resource)
+	}
+
 	projectId := entitlement.Resource.Id.Resource
 	accessLevelValue, err := parseAccessLevelFromEntitlementID(entitlement.Id)
 	if err != nil {

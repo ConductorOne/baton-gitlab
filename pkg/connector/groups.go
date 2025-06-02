@@ -239,7 +239,7 @@ func newGroupBuilder(client *gitlab.Client) *groupBuilder {
 	}
 }
 
-func (r *groupBuilder) Grant(
+func (o *groupBuilder) Grant(
 	ctx context.Context,
 	principal *v2.Resource,
 	entitlement *v2.Entitlement,
@@ -248,6 +248,11 @@ func (r *groupBuilder) Grant(
 	error,
 ) {
 	l := ctxzap.Extract(ctx)
+
+	if strings.HasPrefix(principal.Id.Resource, pendingInvitationUser) {
+		return nil, fmt.Errorf("entitlement cannot be granted: user %q has not yet accepted the invitation to gitlab", principal.Id.Resource)
+	}
+
 	groupIdAndName := entitlement.Resource.Id.Resource
 	groupId, err := fromGroupResourceId(groupIdAndName)
 	if err != nil {
@@ -276,14 +281,14 @@ func (r *groupBuilder) Grant(
 			}
 		}
 		l.Info("baton-gitlab grant: inviting user to group", zap.String("email", userEmail))
-		err = r.InviteGroupMember(ctx, groupId, userEmail, accessLevelValue)
+		err = o.InviteGroupMember(ctx, groupId, userEmail, accessLevelValue)
 		if err != nil {
 			return nil, fmt.Errorf("error inviting user to group: %w", err)
 		}
 		return nil, nil
 	}
 
-	err = r.AddGroupMember(ctx, groupId, userId, accessLevelValue)
+	err = o.AddGroupMember(ctx, groupId, userId, accessLevelValue)
 	if err != nil {
 		errResp := &gitlabSDK.ErrorResponse{}
 		if errors.As(err, &errResp) {
@@ -296,7 +301,7 @@ func (r *groupBuilder) Grant(
 	return nil, nil
 }
 
-func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
 	groupIdAndName := grant.Entitlement.Resource.Id.Resource
 	groupId, err := fromGroupResourceId(groupIdAndName)
 	if err != nil {
@@ -308,7 +313,7 @@ func (r *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		return nil, fmt.Errorf("error converting user ID to int: %w", err)
 	}
 
-	err = r.RemoveGroupMember(ctx, groupId, userId)
+	err = o.RemoveGroupMember(ctx, groupId, userId)
 	if err != nil {
 		if errors.Is(err, gitlabSDK.ErrNotFound) {
 			return annotations.New(&v2.GrantAlreadyRevoked{}), nil

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
@@ -17,42 +18,14 @@ import (
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
+const pendingInvitationUser = "pending-invite-"
+
 type userBuilder struct {
 	*gitlab.Client
 }
 
 func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return userResourceType
-}
-
-func (u *userBuilder) setEmailsGroupMembers(ctx context.Context, users []*gitlabSDK.GroupMember) []*gitlabSDK.GroupMember {
-	for i, user := range users {
-		details, _, err := u.Users.GetUser(user.ID, gitlabSDK.GetUsersOptions{}, gitlabSDK.WithContext(ctx))
-		if err == nil {
-			if details.PublicEmail != "" {
-				users[i].Email = details.PublicEmail
-			}
-			if details.Email != "" {
-				users[i].Email = details.Email
-			}
-		}
-	}
-	return users
-}
-
-func (u *userBuilder) setEmailsProjectMembers(ctx context.Context, users []*gitlabSDK.ProjectMember) []*gitlabSDK.ProjectMember {
-	for i, user := range users {
-		details, _, err := u.Users.GetUser(user.ID, gitlabSDK.GetUsersOptions{}, gitlabSDK.WithContext(ctx))
-		if err == nil {
-			if details.PublicEmail != "" {
-				users[i].Email = details.PublicEmail
-			}
-			if details.Email != "" {
-				users[i].Email = details.Email
-			}
-		}
-	}
-	return users
 }
 
 // List returns all the users from the database as resource objects.
@@ -125,6 +98,7 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		if err != nil {
 			return nil, nil, fmt.Errorf("error parsing group resource id: %w", err)
 		}
+
 		var groupMembers []*gitlabSDK.GroupMember
 		if pToken.Token == "" {
 			groupMembers, res, err = u.ListGroupMembers(ctx, groupId)
@@ -134,9 +108,18 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		if err != nil {
 			return nil, nil, err
 		}
-		groupMembers = u.setEmailsGroupMembers(ctx, groupMembers)
+
 		for _, member := range groupMembers {
 			users = append(users, member)
+		}
+
+		pending, _, err := u.Invites.ListPendingGroupInvitations(groupId, nil)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error listing pending group invitations: %w", err)
+		}
+
+		for _, invite := range pending {
+			users = append(users, invite)
 		}
 
 	case projectResourceType.Id:
@@ -149,7 +132,7 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		if err != nil {
 			return nil, nil, err
 		}
-		projectMembers = u.setEmailsProjectMembers(ctx, projectMembers)
+
 		for _, member := range projectMembers {
 			users = append(users, member)
 		}
@@ -228,7 +211,6 @@ func (u *userBuilder) createOnPremUser(
 	return car, []*v2.PlaintextData{{Bytes: []byte(generatedPassword)}}, nil, nil
 }
 
-// ************************* THIS FUNCTION IS NOT FINISHED YET, IT IS FOR CREATE NEW USER IN THE CLOUD VERSION *********************************.
 func (u *userBuilder) createCloudUser(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
@@ -250,14 +232,9 @@ func (u *userBuilder) createCloudUser(
 		return nil, nil, nil, fmt.Errorf("failed to get group ID: %w", err)
 	}
 
-	err = u.InviteGroupMember(ctx, groupID, email, gitlabSDK.GuestPermissions)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to invite user to group: %w", err)
-	}
-
 	members, _, err := u.ListGroupMembers(ctx, groupID)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to list group members after invite: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to list group members: %w", err)
 	}
 
 	var user *gitlabSDK.GroupMember
@@ -265,6 +242,13 @@ func (u *userBuilder) createCloudUser(
 		if m.Email == email {
 			user = m
 			break
+		}
+	}
+
+	if user == nil {
+		err = u.InviteGroupMember(ctx, groupID, email, gitlabSDK.GuestPermissions)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to invite user to group: %w", err)
 		}
 	}
 
@@ -284,7 +268,7 @@ func (u *userBuilder) createCloudUser(
 		userRes, err = resourceSdk.NewUserResource(
 			email,
 			userResourceType,
-			email,
+			pendingInvitationUser+strings.ToLower(email),
 			[]resourceSdk.UserTraitOption{
 				resourceSdk.WithEmail(email, true),
 				resourceSdk.WithUserLogin(email),
@@ -375,10 +359,6 @@ func newUserBuilder(client *gitlab.Client) *userBuilder {
 }
 
 func (u *userBuilder) getGroupID(ctx context.Context) (string, error) {
-	if u.AccountCreationGroup == "" {
-		return "", fmt.Errorf("account creation group not set. use --account-creation-group when running the connector")
-	}
-
 	groupName := u.AccountCreationGroup
 	groups, _, err := u.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
 		Search: &groupName,
@@ -400,13 +380,16 @@ func (u *userBuilder) getGroupID(ctx context.Context) (string, error) {
 
 func userResource(user any) (*v2.Resource, error) {
 	var id int
-	// NOTE: The email attribute is only visible to group owners for enterprise users of the group when an API request is sent to the group itself, or that group's subgroups or projects.
+	// NOTE: The email attribute is only visible in the DC version (on-premise/self-hosted) to group owners for enterprise users of the group when an API request is sent to the group itself,
+	// or that group's subgroups or projects.
 	// https://docs.gitlab.com/ee/api/members.html#known-issues
 	var email string
 	var username string
 	var name string
 	var state string
 	var accessLevel int
+	// NOTE: The last login attribute is only visible in the DC version (on-premise/self-hosted). To get this attribute you need admin permissions and in the cloud version it does not exist.
+	// https://docs.gitlab.com/api/users/
 	var lastLogin time.Time
 
 	switch user := user.(type) {
@@ -433,14 +416,34 @@ func userResource(user any) (*v2.Resource, error) {
 		if user.LastActivityOn != nil && !time.Time(*user.LastActivityOn).IsZero() {
 			lastLogin = time.Time(*user.LastActivityOn)
 		}
+	case *gitlabSDK.PendingInvite:
+		email := user.InviteEmail
+		name := pendingInvitationUser + strings.ToLower(email)
+
+		profile := map[string]interface{}{
+			"email": email,
+		}
+
+		return resourceSdk.NewUserResource(
+			name,
+			userResourceType,
+			name,
+			[]resourceSdk.UserTraitOption{
+				resourceSdk.WithEmail(email, true),
+				resourceSdk.WithUserLogin(email),
+				resourceSdk.WithUserProfile(profile),
+				resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_DISABLED),
+			},
+		)
 	default:
 		return nil, fmt.Errorf("unknown user type: %T", user)
 	}
 
 	userStatus := v2.UserTrait_Status_STATUS_ENABLED
-	if state == "blocked" || state == "deactivated" || state == "ldap_blocked" || state == "banned" {
+	switch state {
+	case "blocked", "deactivated", "ldap_blocked", "banned":
 		userStatus = v2.UserTrait_Status_STATUS_DISABLED
-	} else if state == "pending" {
+	case "pending":
 		userStatus = v2.UserTrait_Status_STATUS_UNSPECIFIED
 	}
 

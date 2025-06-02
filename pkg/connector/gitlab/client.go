@@ -36,7 +36,7 @@ func NewClient(ctx context.Context, accessToken, baseURL, accountCreationGroup s
 	}, nil
 }
 
-func (c *Client) GetAllUsers(ctx context.Context, nextPageToken string) ([]gitlabSDK.User, *gitlabSDK.Response, error) {
+func (o *Client) GetAllUsers(ctx context.Context, nextPageToken string) ([]gitlabSDK.User, *gitlabSDK.Response, error) {
 	var nextPage int
 	var err error
 
@@ -56,13 +56,13 @@ func (c *Client) GetAllUsers(ctx context.Context, nextPageToken string) ([]gitla
 	var options []gitlabSDK.RequestOptionFunc
 	options = append(options, gitlabSDK.WithContext(ctx))
 
-	req, err := c.NewRequest(http.MethodGet, usersPath, opt, options)
+	req, err := o.NewRequest(http.MethodGet, usersPath, opt, options)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var users []gitlabSDK.User
-	resp, err := c.Do(req, &users)
+	resp, err := o.Do(req, &users)
 	if err != nil {
 		return nil, nil, err
 	}
