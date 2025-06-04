@@ -290,9 +290,14 @@ func (o *groupBuilder) Grant(
 
 	err = o.AddGroupMember(ctx, groupId, userId, accessLevelValue)
 	if err != nil {
-		errResp := &gitlabSDK.ErrorResponse{}
+		var errResp *gitlabSDK.ErrorResponse
 		if errors.As(err, &errResp) {
+			// Case the user has already been assigned that grant
 			if errResp.Response != nil && errResp.Response.StatusCode == http.StatusConflict {
+				return annotations.New(&v2.GrantAlreadyExists{}), nil
+			}
+			// Case: ignore error: The access level to be assigned must be higher or equal to the one inherited from the parent group.
+			if strings.Contains(err.Error(), "should be greater than or equal to") {
 				return annotations.New(&v2.GrantAlreadyExists{}), nil
 			}
 		}
