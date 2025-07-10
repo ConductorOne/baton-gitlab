@@ -1,0 +1,56 @@
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: gitlab
+    hostname: localhost
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2222:22"
+    volumes:
+      - gitlab-config:/etc/gitlab
+      - gitlab-logs:/var/log/gitlab
+      - gitlab-data:/var/opt/gitlab
+    environment:
+      GITLAB_ROOT_PASSWORD: 'StrongPassword123'
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        
+        # Database settings
+        postgresql['shared_buffers'] = "256MB"
+        postgresql['max_connections'] = 100
+        
+        # Disable unnecessary services
+        prometheus_monitoring['enable'] = false
+        registry['enable'] = false
+        pages_enabled = false
+        gitlab_kas['enable'] = false
+        
+        # Process limits
+        puma['worker_processes'] = 2
+        sidekiq['concurrency'] = 2
+        
+        # Email configuration
+        gitlab_rails['gitlab_email_enabled'] = false
+        
+        # Store root password for first login
+        gitlab_rails['store_initial_root_password'] = true
+    shm_size: '256m'
+    healthcheck:
+      test: ["CMD", "/opt/gitlab/bin/gitlab-healthcheck", "--fail", "--max-time", "10"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+# Note: GitLab takes several minutes to fully initialize.
+# The root user credentials will be:
+#   - username: root
+#   - password: StrongPassword123!
+
+volumes:
+  gitlab-config:
+  gitlab-logs:
+  gitlab-data:
