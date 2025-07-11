@@ -2,8 +2,10 @@
   "fields": [
     {
       "name": "access-token",
+      "displayName": "Personal access token",
       "description": "The access token to authenticate with the GitLab API",
       "isRequired": true,
+      "isSecret": true,
       "stringField": {
         "rules": {
           "isRequired": true
@@ -12,6 +14,7 @@
     },
     {
       "name": "account-creation-group",
+      "displayName": "Group",
       "description": "The group indicated will be used as a default group for the new users. Required for account creation capability in the Cloud Version.",
       "stringField": {
         "rules": {}
@@ -19,6 +22,7 @@
     },
     {
       "name": "base-url",
+      "displayName": "URL",
       "description": "The base URL of the GitLab instance",
       "stringField": {
         "defaultValue": "https://gitlab.com/",
