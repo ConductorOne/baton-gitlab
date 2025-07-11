@@ -7,17 +7,21 @@ import (
 var (
 	AccessToken = field.StringField(
 		"access-token",
+		field.WithDisplayName("Personal access token"),
 		field.WithDescription("The access token to authenticate with the GitLab API"),
 		field.WithRequired(true),
+		field.WithIsSecret(true),
 	)
 	BaseURL = field.StringField(
 		"base-url",
+		field.WithDisplayName("URL"),
 		field.WithDescription("The base URL of the GitLab instance"),
 		field.WithDefaultValue("https://gitlab.com/"),
 		field.WithRequired(false),
 	)
 	AccountCreationGroup = field.StringField(
 		"account-creation-group",
+		field.WithDisplayName("Group"),
 		field.WithDescription("The group indicated will be used as a default group for the new users. Required for account creation capability in the Cloud Version."),
 		field.WithRequired(false),
 	)
