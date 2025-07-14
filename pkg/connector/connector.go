@@ -86,26 +86,24 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
 // to be sure that they are valid.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
-	if !d.Client.IsOnPremise {
+	if !d.Client.IsOnPremise && d.Client.AccountCreationGroup != "" {
+		groupName := d.Client.AccountCreationGroup
+		groups, _, err := d.Client.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
+			Search: &groupName,
+		},
+			gitlabSDK.WithContext(ctx),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error getting account creation group: %w", err)
+		}
+
+		if len(groups) == 0 {
+			return nil, fmt.Errorf("account creation group not found")
+		}
+	} else {
 		_, _, err := d.Client.ListGroups(ctx, "")
 		if err != nil {
 			return nil, fmt.Errorf("error listing groups: %w", err)
-		}
-
-		if d.Client.AccountCreationGroup != "" {
-			groupName := d.Client.AccountCreationGroup
-			groups, _, err := d.Client.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
-				Search: &groupName,
-			},
-				gitlabSDK.WithContext(ctx),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("error getting account creation group: %w", err)
-			}
-
-			if len(groups) == 0 {
-				return nil, fmt.Errorf("account creation group not found")
-			}
 		}
 	}
 
