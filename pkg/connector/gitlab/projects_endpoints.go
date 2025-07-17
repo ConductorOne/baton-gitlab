@@ -32,7 +32,7 @@ func (o *Client) ListProjects(ctx context.Context, groupId, nextPageStr string) 
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	return projects, res, nil
@@ -49,7 +49,7 @@ func (o *Client) ListProjectMembers(ctx context.Context, projectId string) ([]*g
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	return users, res, nil
@@ -85,7 +85,7 @@ func (o *Client) ListProjectMembersPaginate(ctx context.Context, projectId, next
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	return users, res, nil
@@ -104,7 +104,7 @@ func (o *Client) AddProjectMember(ctx context.Context, projectId string, userId 
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, err
+		return nil, wrapError(err, res)
 	}
 
 	return user, nil
@@ -120,7 +120,7 @@ func (o *Client) RemoveProjectMember(ctx context.Context, projectId string, user
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return err
+		return wrapError(err, res)
 	}
 
 	return nil

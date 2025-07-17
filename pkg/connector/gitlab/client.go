@@ -2,11 +2,14 @@ package gitlab
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Client struct {
@@ -68,4 +71,22 @@ func (o *Client) GetAllUsers(ctx context.Context, nextPageToken string) ([]gitla
 	}
 
 	return users, resp, nil
+}
+
+// wrapError takes the error from the request and validates the code. It wraps the error with the expected code for the SDK to handle it.
+//
+// TODO: Include the other codes expected by the SDK for it to behave properly.
+func wrapError(err error, response *gitlabSDK.Response) error {
+	if response == nil {
+		return err
+	}
+
+	// Validates if the code error was a 429 (rate limit) and wraps the error with the expected code by the baton-sdk.
+	if response.StatusCode == http.StatusTooManyRequests {
+		st := status.New(codes.Unavailable, response.Status)
+		allErrs := append([]error{st.Err()}, err)
+		err = errors.Join(allErrs...)
+	}
+
+	return err
 }
