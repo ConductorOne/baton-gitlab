@@ -15,7 +15,6 @@ linters:
     - goconst
     - gocritic
     - godot
-    - gomoddirectives
     - goprintffuncname
     - gosec
     - govet
