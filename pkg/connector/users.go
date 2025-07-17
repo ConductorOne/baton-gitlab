@@ -41,12 +41,7 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		err   error
 	)
 
-	if u.IsOnPremise {
-		users, res, err = u.listOnPremiseVersion(ctx, pToken)
-	} else {
-		users, res, err = u.listCloudVersion(ctx, parentResourceID, pToken)
-	}
-
+	users, res, err = u.getUsers(ctx, parentResourceID, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -68,26 +63,7 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	return outResources, nextPage, nil, nil
 }
 
-func (u *userBuilder) listOnPremiseVersion(ctx context.Context, pToken *pagination.Token) ([]any, *gitlabSDK.Response, error) {
-	var pageToken string
-
-	if pToken != nil {
-		pageToken = pToken.Token
-	}
-
-	users, res, err := u.GetAllUsers(ctx, pageToken)
-	if err != nil {
-		return nil, nil, err
-	}
-	resources := make([]any, len(users))
-	for i, user := range users {
-		resources[i] = &user
-	}
-
-	return resources, res, nil
-}
-
-func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]any, *gitlabSDK.Response, error) {
+func (u *userBuilder) getUsers(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]any, *gitlabSDK.Response, error) {
 	var users []any
 	var res *gitlabSDK.Response
 	var err error
