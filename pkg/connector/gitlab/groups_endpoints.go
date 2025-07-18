@@ -25,6 +25,7 @@ func (o *Client) ListGroups(ctx context.Context, nextPageStr string) ([]*gitlabS
 		ListOptions: gitlabSDK.ListOptions{
 			Page: nextPage,
 		},
+		Owned: gitlabSDK.Ptr(true),
 	},
 		gitlabSDK.WithContext(ctx),
 	)

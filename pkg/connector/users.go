@@ -138,7 +138,7 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		}
 
 	default:
-		return nil, nil, fmt.Errorf("unsupported parent resource type: %s", parentResourceID.ResourceType)
+		return nil, nil, nil
 	}
 
 	return users, res, nil

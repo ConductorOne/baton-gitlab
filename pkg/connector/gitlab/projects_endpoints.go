@@ -23,6 +23,7 @@ func (o *Client) ListProjects(ctx context.Context, groupId, nextPageStr string) 
 		ListOptions: gitlabSDK.ListOptions{
 			Page: nextPage,
 		},
+		Owned: gitlabSDK.Ptr(true),
 	},
 		gitlabSDK.WithContext(ctx),
 	)
