@@ -80,7 +80,7 @@ func (c *Client) GetUsers(ctx context.Context, pToken *pagination.Token) ([]User
 	}
 
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		logBody(ctx, res)
 		return nil, nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
 	}

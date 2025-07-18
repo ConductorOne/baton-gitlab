@@ -87,7 +87,6 @@ func userOnPremResource(user onprem.User) (*v2.Resource, error) {
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (u *userOnPremBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	// TODO: check pagination works
 	var (
 		users []onprem.User
 		res   *http.Response
@@ -95,7 +94,6 @@ func (u *userOnPremBuilder) List(ctx context.Context, parentResourceID *v2.Resou
 	)
 
 	users, res, err = u.onpremClient.GetUsers(ctx, pToken)
-	defer res.Body.Close()
 	if err != nil {
 		return nil, "", nil, err
 	}

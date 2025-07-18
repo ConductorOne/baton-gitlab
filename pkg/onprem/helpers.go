@@ -15,7 +15,7 @@ func logBody(ctx context.Context, response *http.Response) {
 		return
 	}
 	l := ctxzap.Extract(ctx)
-	body := make([]byte, 1000000)
+	body := make([]byte, 10000)
 	n, err := response.Body.Read(body)
 	if err != nil {
 		l.Error("error reading response body", zap.Error(err))

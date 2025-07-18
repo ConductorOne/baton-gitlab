@@ -48,6 +48,17 @@ type User struct {
 	IsAdmin             bool               `json:"is_admin"`
 	Note                *string            `json:"note"`
 	NamespaceID         int                `json:"namespace_id"`
-	CreatedBy           *string            `json:"created_by"`
+	CreatedBy           *CreatedBy         `json:"created_by"`
 	EmailResetOfferedAt *string            `json:"email_reset_offered_at"`
+}
+
+type CreatedBy struct {
+	ID          int     `json:"id"`
+	Username    string  `json:"username"`
+	PublicEmail *string `json:"public_email"`
+	Name        string  `json:"name"`
+	State       string  `json:"state"`
+	Locked      bool    `json:"locked"`
+	AvatarURL   string  `json:"avatar_url"`
+	WebURL      string  `json:"web_url"`
 }
