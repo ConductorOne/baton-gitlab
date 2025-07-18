@@ -89,9 +89,9 @@ func (u *userBuilder) getUsers(ctx context.Context, parentResourceID *v2.Resourc
 			users = append(users, member)
 		}
 
-		pending, _, err := u.Invites.ListPendingGroupInvitations(groupId, nil)
+		pending, _, err := u.ListExternalGroupMembers(ctx, groupId)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error listing pending group invitations: %w", err)
+			return nil, nil, fmt.Errorf("error listing external group members: %w", err)
 		}
 
 		for _, invite := range pending {

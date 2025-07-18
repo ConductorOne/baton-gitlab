@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
@@ -53,6 +54,21 @@ func (o *Client) ListGroupMembers(ctx context.Context, groupId string) ([]*gitla
 		return nil, res, err
 	}
 
+	return users, res, nil
+}
+
+func (o *Client) ListExternalGroupMembers(ctx context.Context, groupId string) ([]*gitlabSDK.PendingInvite, *gitlabSDK.Response, error) {
+	users, res, err := o.Invites.ListPendingGroupInvitations(groupId, &gitlabSDK.ListPendingInvitationsOptions{
+		ListOptions: gitlabSDK.ListOptions{},
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+	if err != nil {
+		// handle the case where the user does not have permissions to the external group
+		if res.StatusCode != http.StatusForbidden {
+			return nil, res, err
+		}
+	}
 	return users, res, nil
 }
 
