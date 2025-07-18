@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/conductorone/baton-gitlab/pkg/client"
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
+	"github.com/conductorone/baton-gitlab/pkg/onprem"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
@@ -14,15 +14,17 @@ import (
 )
 
 type Connector struct {
-	SdkClient  *gitlab.Client
-	httpClient *client.Client
+	SdkClient    *gitlab.Client
+	onpremClient *onprem.Client
 }
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
+	// the user resource syncers are different for on-premise and cloud GitLab due to
+	// pagination being different: https://conductorone.atlassian.net/browse/BB-1128
 	var userResource connectorbuilder.ResourceSyncer
 	if d.SdkClient.IsOnPremise {
-		userResource = newUserOnPremBuilder(d.SdkClient, d.httpClient)
+		userResource = newUserOnPremBuilder(d.SdkClient, d.onpremClient)
 	} else {
 		userResource = newUserBuilder(d.SdkClient)
 	}
@@ -126,13 +128,13 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 		return nil, fmt.Errorf("error creating gitlab client: %w", err)
 	}
 
-	httpClient, err := client.New(ctx, accessToken, baseURL)
+	httpClient, err := onprem.New(ctx, accessToken, baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("error creating http client: %w", err)
 	}
 
 	return &Connector{
-		SdkClient:  gitlabClient,
-		httpClient: httpClient,
+		SdkClient:    gitlabClient,
+		onpremClient: httpClient,
 	}, nil
 }

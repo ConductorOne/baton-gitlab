@@ -4,39 +4,97 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
-	"github.com/conductorone/baton-gitlab/pkg/client"
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
+	"github.com/conductorone/baton-gitlab/pkg/onprem"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
 type userOnPremBuilder struct {
 	*gitlab.Client
-	httpClient *client.Client // for on-premise listing
+	onpremClient *onprem.Client
 }
 
 func (u *userOnPremBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return userResourceType
 }
 
+func userOnPremResource(user onprem.User) (*v2.Resource, error) {
+	var id int
+	// NOTE: The email attribute is only visible in the DC version (on-premise/self-hosted) to group owners for enterprise users of the group when an API request is sent to the group itself,
+	// or that group's subgroups or projects.
+	// https://docs.gitlab.com/ee/api/members.html#known-issues
+	var email string
+	var username string
+	var name string
+	var state string
+	var accessLevel int
+	// NOTE: The last login attribute is only visible in the DC version (on-premise/self-hosted). To get this attribute you need admin permissions and in the cloud version it does not exist.
+	// https://docs.gitlab.com/api/users/
+	var lastLogin time.Time
+
+	id = user.ID
+	email = user.Email
+	state = user.State
+	name = user.Name
+	username = user.Username
+	if user.LastActivityOn != nil && !time.Time(*user.LastActivityOn).IsZero() {
+		lastLogin = time.Time(*user.LastActivityOn)
+	}
+
+	userStatus := v2.UserTrait_Status_STATUS_ENABLED
+	switch state {
+	case "blocked", "deactivated", "ldap_blocked", "banned":
+		userStatus = v2.UserTrait_Status_STATUS_DISABLED
+	case "pending":
+		userStatus = v2.UserTrait_Status_STATUS_UNSPECIFIED
+	}
+
+	profile := map[string]interface{}{
+		"first_name":   name,
+		"username":     username,
+		"email":        email,
+		"state":        state,
+		"access_level": accessLevel,
+		"id":           id,
+	}
+
+	userTraitOptions := []resourceSdk.UserTraitOption{
+		resourceSdk.WithEmail(email, true),
+		resourceSdk.WithStatus(userStatus),
+		resourceSdk.WithUserProfile(profile),
+		resourceSdk.WithUserLogin(email),
+	}
+
+	if !lastLogin.IsZero() {
+		userTraitOptions = append(userTraitOptions, resourceSdk.WithLastLogin(lastLogin))
+	}
+
+	return resourceSdk.NewUserResource(
+		name,
+		userResourceType,
+		id,
+		userTraitOptions,
+	)
+}
+
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (u *userOnPremBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	if parentResourceID == nil {
-		return nil, "", nil, nil
-	}
-
+	// TODO: check pagination works
 	var (
-		users []any
+		users []onprem.User
 		res   *http.Response
 		err   error
 	)
 
-	users, res, err = u.httpClient.GetUsers(ctx, pToken)
+	users, res, err = u.onpremClient.GetUsers(ctx, pToken)
 	defer res.Body.Close()
 	if err != nil {
 		return nil, "", nil, err
@@ -44,7 +102,7 @@ func (u *userOnPremBuilder) List(ctx context.Context, parentResourceID *v2.Resou
 
 	outResources := make([]*v2.Resource, 0, len(users))
 	for _, user := range users {
-		resource, err := userResource(user)
+		resource, err := userOnPremResource(user)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -52,8 +110,8 @@ func (u *userOnPremBuilder) List(ctx context.Context, parentResourceID *v2.Resou
 	}
 
 	var nextToken string
-	if client.HasNextToken(res) {
-		nextToken = client.NextToken(res)
+	if onprem.HasNextToken(res) {
+		nextToken = onprem.NextToken(ctx, res)
 	}
 
 	return outResources, nextToken, nil, nil
@@ -90,13 +148,6 @@ func (u *userOnPremBuilder) CreateAccount(
 	error,
 ) {
 	return u.createOnPremUser(accountInfo, credentialOptions)
-}
-
-func newUserOnPremBuilder(client *gitlab.Client, httpClient *client.Client) *userOnPremBuilder {
-	return &userOnPremBuilder{
-		Client:     client,
-		httpClient: httpClient,
-	}
 }
 
 func (u *userOnPremBuilder) createOnPremUser(
@@ -170,4 +221,11 @@ func (u *userOnPremBuilder) getCreateUserOptions(accountInfo *v2.AccountInfo, cr
 	}
 
 	return createUserOpts, password, nil
+}
+
+func newUserOnPremBuilder(client *gitlab.Client, httpClient *onprem.Client) *userOnPremBuilder {
+	return &userOnPremBuilder{
+		Client:       client,
+		onpremClient: httpClient,
+	}
 }

@@ -1,8 +1,9 @@
-package client
+package onprem
 
 import (
 	"context"
 	"net/http"
+	"net/url"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/peterhellberg/link"
@@ -14,7 +15,7 @@ func logBody(ctx context.Context, response *http.Response) {
 		return
 	}
 	l := ctxzap.Extract(ctx)
-	body := make([]byte, 512)
+	body := make([]byte, 1000000)
 	n, err := response.Body.Read(body)
 	if err != nil {
 		l.Error("error reading response body", zap.Error(err))
@@ -25,7 +26,7 @@ func logBody(ctx context.Context, response *http.Response) {
 
 func HasNextToken(res *http.Response) bool {
 	for _, l := range link.ParseResponse(res) {
-		if v, ok := l.Extra["results"]; ok && v == "true" {
+		if l.Rel == "next" {
 			return true
 		}
 	}
@@ -33,12 +34,16 @@ func HasNextToken(res *http.Response) bool {
 }
 
 // https://docs.sentry.io/api/pagination/
-func NextToken(res *http.Response) string {
+func NextToken(ctx context.Context, res *http.Response) string {
+	logger := ctxzap.Extract(ctx)
 	for _, l := range link.ParseResponse(res) {
 		if l.Rel == "next" {
-			if v, ok := l.Extra["cursor"]; ok {
-				return v
+			nextURL, err := url.Parse(l.URI)
+			if err != nil {
+				logger.Error("failed to parse next token URL", zap.Error(err))
+				return ""
 			}
+			return nextURL.Query().Get("cursor")
 		}
 	}
 	return ""

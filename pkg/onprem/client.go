@@ -1,4 +1,4 @@
-package client
+package onprem
 
 import (
 	"context"
@@ -40,6 +40,7 @@ func New(ctx context.Context, token, baseURL string) (*Client, error) {
 	}
 
 	client = &http.Client{
+		// adds token to every request and base URL to every request
 		Transport: &transport{
 			BaseURL: baseURL,
 			rt:      client.Transport,
@@ -51,8 +52,8 @@ func New(ctx context.Context, token, baseURL string) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) GetUsers(ctx context.Context, pToken *pagination.Token) ([]any, *http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/users", nil)
+func (c *Client) GetUsers(ctx context.Context, pToken *pagination.Token) ([]User, *http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/v4/users", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -62,14 +63,15 @@ func (c *Client) GetUsers(ctx context.Context, pToken *pagination.Token) ([]any,
 	query.Set("pagination", "keyset")
 	query.Set("order_by", "id")
 	query.Set("sort", "asc")
-	if pToken != nil && pToken.Token != "" {
-		query.Set("id_after", pToken.Token)
-	}
 
-	var target []any
+	if pToken != nil && pToken.Token != "" {
+		query.Set("cursor", pToken.Token)
+	}
+	req.URL.RawQuery = query.Encode()
+	var target []User
 	res, err := c.Do(
 		req,
-		uhttp.WithJSONResponse(target),
+		uhttp.WithJSONResponse(&target),
 	)
 
 	if err != nil {
