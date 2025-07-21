@@ -26,23 +26,19 @@ func (u *userOnPremBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 }
 
 func userOnPremResource(user onprem.User) (*v2.Resource, error) {
-	var id int
 	// NOTE: The email attribute is only visible in the DC version (on-premise/self-hosted) to group owners for enterprise users of the group when an API request is sent to the group itself,
 	// or that group's subgroups or projects.
 	// https://docs.gitlab.com/ee/api/members.html#known-issues
-	var email string
-	var username string
-	var name string
-	var state string
+
+	id := user.ID
+	email := user.Email
+	state := user.State
+	name := user.Name
+	username := user.Username
+
 	// NOTE: The last login attribute is only visible in the DC version (on-premise/self-hosted). To get this attribute you need admin permissions and in the cloud version it does not exist.
 	// https://docs.gitlab.com/api/users/
 	var lastLogin time.Time
-
-	id = user.ID
-	email = user.Email
-	state = user.State
-	name = user.Name
-	username = user.Username
 	if user.LastActivityOn != nil && !time.Time(*user.LastActivityOn).IsZero() {
 		lastLogin = time.Time(*user.LastActivityOn)
 	}

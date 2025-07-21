@@ -64,6 +64,9 @@ func (o *Client) ListExternalGroupMembers(ctx context.Context, groupId string) (
 		gitlabSDK.WithContext(ctx),
 	)
 	if err != nil {
+		if res == nil {
+			return nil, nil, fmt.Errorf("gitlab-connector: error listing external group members: %w", err)
+		}
 		// handle the case where the user does not have permissions to the external group
 		if res.StatusCode != http.StatusForbidden {
 			return nil, res, err
