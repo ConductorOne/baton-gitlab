@@ -34,7 +34,6 @@ func userOnPremResource(user onprem.User) (*v2.Resource, error) {
 	var username string
 	var name string
 	var state string
-	var accessLevel int
 	// NOTE: The last login attribute is only visible in the DC version (on-premise/self-hosted). To get this attribute you need admin permissions and in the cloud version it does not exist.
 	// https://docs.gitlab.com/api/users/
 	var lastLogin time.Time
@@ -57,12 +56,11 @@ func userOnPremResource(user onprem.User) (*v2.Resource, error) {
 	}
 
 	profile := map[string]interface{}{
-		"first_name":   name,
-		"username":     username,
-		"email":        email,
-		"state":        state,
-		"access_level": accessLevel,
-		"id":           id,
+		"first_name": name,
+		"username":   username,
+		"email":      email,
+		"state":      state,
+		"id":         id,
 	}
 
 	userTraitOptions := []resourceSdk.UserTraitOption{
