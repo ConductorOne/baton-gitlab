@@ -30,7 +30,7 @@ func (o *Client) ListGroups(ctx context.Context, nextPageStr string) ([]*gitlabS
 	)
 
 	if err != nil {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -47,7 +47,7 @@ func (o *Client) ListGroupMembers(ctx context.Context, groupId string) ([]*gitla
 		gitlabSDK.WithContext(ctx),
 	)
 	if err != nil {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -83,7 +83,7 @@ func (o *Client) ListGroupMembersPaginate(ctx context.Context, groupId string, n
 		gitlabSDK.WithContext(ctx),
 	)
 	if err != nil {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -102,7 +102,7 @@ func (o *Client) AddGroupMember(ctx context.Context, groupId string, userId int,
 	)
 
 	if err != nil {
-		return err
+		return wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -121,7 +121,7 @@ func (o *Client) InviteGroupMember(ctx context.Context, groupId, userEmail strin
 	)
 
 	if err != nil {
-		return err
+		return wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -142,7 +142,7 @@ func (o *Client) RemoveGroupMember(ctx context.Context, groupId string, userId i
 	)
 
 	if err != nil {
-		return err
+		return wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {

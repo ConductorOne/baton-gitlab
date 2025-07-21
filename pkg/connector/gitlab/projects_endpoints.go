@@ -28,7 +28,7 @@ func (o *Client) ListProjects(ctx context.Context, groupId, nextPageStr string) 
 	)
 
 	if err != nil {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -45,7 +45,7 @@ func (o *Client) ListProjectMembers(ctx context.Context, projectId string) ([]*g
 		gitlabSDK.WithContext(ctx),
 	)
 	if err != nil {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -81,7 +81,7 @@ func (o *Client) ListProjectMembersPaginate(ctx context.Context, projectId, next
 		gitlabSDK.WithContext(ctx),
 	)
 	if err != nil {
-		return nil, res, err
+		return nil, res, wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -100,7 +100,7 @@ func (o *Client) AddProjectMember(ctx context.Context, projectId string, userId 
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
@@ -116,7 +116,7 @@ func (o *Client) RemoveProjectMember(ctx context.Context, projectId string, user
 	)
 
 	if err != nil {
-		return err
+		return wrapError(err, res)
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
