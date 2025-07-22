@@ -14,13 +14,21 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
+	"google.golang.org/protobuf/proto"
 )
 
 type projectBuilder struct {
 	*gitlab.Client
 }
 
-func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
+	var annotations []proto.Message
+	if !isOnPremise {
+		annotations = []proto.Message{
+			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
+		}
+	}
+
 	return resourceSdk.NewGroupResource(
 		project.NameWithNamespace,
 		projectResourceType,
@@ -34,7 +42,7 @@ func projectResource(project *gitlabSDK.Project, parentResourceID *v2.ResourceId
 				},
 			),
 		},
-		resourceSdk.WithAnnotation(&v2.ChildResourceType{ResourceTypeId: userResourceType.Id}),
+		resourceSdk.WithAnnotation(annotations...),
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)
 }
@@ -70,7 +78,7 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 
 	outResources := make([]*v2.Resource, 0, len(projects))
 	for _, project := range projects {
-		resource, err := projectResource(project, parentResourceID)
+		resource, err := projectResource(project, parentResourceID, o.IsOnPremise)
 		if err != nil {
 			return nil, "", nil, err
 		}
