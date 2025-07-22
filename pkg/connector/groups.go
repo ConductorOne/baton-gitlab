@@ -18,6 +18,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 type groupBuilder struct {
@@ -33,7 +34,7 @@ var accessLevels = []gitlabSDK.AccessLevelValue{
 	gitlabSDK.OwnerPermissions,
 }
 
-func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
 	profile := map[string]interface{}{
 		"id":          group.ID,
 		"name":        group.Name,
@@ -44,20 +45,28 @@ func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2
 		profile["parent_group_id"] = group.ParentID
 	}
 
+	var annotations []proto.Message
+	if !isOnPremise {
+		annotations = []proto.Message{
+			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
+		}
+	} else {
+		annotations = []proto.Message{
+			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
+		}
+	}
+
 	return resourceSdk.NewGroupResource(
 		group.FullName,
 		groupResourceType,
 		toGroupResourceId(strconv.Itoa(group.ID)),
 		[]resourceSdk.GroupTraitOption{
-			resourceSdk.WithGroupProfile(
-				profile,
-			),
+			resourceSdk.WithGroupProfile(profile),
 		},
-		resourceSdk.WithAnnotation(
-			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
-		),
+		resourceSdk.WithAnnotation(annotations...),
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)
 }
@@ -93,7 +102,7 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 			continue
 		}
 
-		resource, err := groupResource(group, parentResourceID)
+		resource, err := groupResource(group, parentResourceID, o.IsOnPremise)
 		if err != nil {
 			return nil, "", nil, err
 		}
