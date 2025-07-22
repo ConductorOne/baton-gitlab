@@ -1,12 +1,12 @@
 version: "2"
-
 linters:
+  default: none
   enable:
     - asasalint
     - asciicheck
     - bidichk
-    - bodyclose
     - durationcheck
+    - errcheck
     - errorlint
     - exhaustive
     - forbidigo
@@ -14,9 +14,10 @@ linters:
     - goconst
     - gocritic
     - godot
-    - gomoddirectives
     - goprintffuncname
     - gosec
+    - govet
+    - ineffassign
     - nakedret
     - nilerr
     - noctx
@@ -25,11 +26,13 @@ linters:
     - nosprintfhostport
     - predeclared
     - revive
+    - staticcheck
     - tparallel
     - unconvert
+    - unused
     - usestdlibvars
+    - usetesting
     - whitespace
-
   settings:
     exhaustive:
       default-signifies-exhaustive: true
@@ -41,15 +44,13 @@ linters:
           rules: ${base-path}/tools/rules.go
         underef:
           skipRecvDeref: false
-    gomoddirectives:
-      replace-allow-list:
-        - gitlab.com/gitlab-org/api/client-go
-      replace-local: true
     govet:
       disable:
         - fieldalignment
         - shadow
       enable-all: true
+    nakedret:
+      max-func-lines: 0
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -86,11 +87,26 @@ linters:
               - HTTP
               - API
             - []
-
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - godot
+        source: (TODO)
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-same-issues: 50
-
 formatters:
+  enable:
+    - goimports
   exclusions:
     generated: lax
     paths:

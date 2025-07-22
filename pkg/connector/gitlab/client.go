@@ -18,11 +18,33 @@ type Client struct {
 	IsOnPremise          bool
 }
 
+type errorWrappingTransport struct {
+	rt http.RoundTripper
+}
+
+func (t *errorWrappingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.rt.RoundTrip(req)
+
+	// Handle rate limiting regardless of error state
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		st := status.New(codes.Unavailable, resp.Status)
+		if err != nil {
+			return resp, errors.Join(st.Err(), err)
+		}
+		return resp, st.Err()
+	}
+
+	return resp, err
+}
+
 func NewClient(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Client, error) {
 	httpClient, err := uhttp.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Wrap the transport to handle rate limiting errors
+	httpClient.Transport = &errorWrappingTransport{rt: httpClient.Transport}
 
 	client, err := gitlabSDK.NewClient(accessToken,
 		gitlabSDK.WithBaseURL(baseURL),
@@ -71,22 +93,4 @@ func (o *Client) GetAllUsers(ctx context.Context, nextPageToken string) ([]gitla
 	}
 
 	return users, resp, nil
-}
-
-// wrapError takes the error from the request and validates the code. It wraps the error with the expected code for the SDK to handle it.
-//
-// TODO: Include the other codes expected by the SDK for it to behave properly.
-func wrapError(err error, response *gitlabSDK.Response) error {
-	if response == nil {
-		return err
-	}
-
-	// Validates if the code error was a 429 (rate limit) and wraps the error with the expected code by the baton-sdk.
-	if response.StatusCode == http.StatusTooManyRequests {
-		st := status.New(codes.Unavailable, response.Status)
-		allErrs := append([]error{st.Err()}, err)
-		err = errors.Join(allErrs...)
-	}
-
-	return err
 }

@@ -41,12 +41,7 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		err   error
 	)
 
-	if u.IsOnPremise {
-		users, res, err = u.listOnPremiseVersion(ctx, pToken)
-	} else {
-		users, res, err = u.listCloudVersion(ctx, parentResourceID, pToken)
-	}
-
+	users, res, err = u.getUsers(ctx, parentResourceID, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -68,26 +63,7 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	return outResources, nextPage, nil, nil
 }
 
-func (u *userBuilder) listOnPremiseVersion(ctx context.Context, pToken *pagination.Token) ([]any, *gitlabSDK.Response, error) {
-	var pageToken string
-
-	if pToken != nil {
-		pageToken = pToken.Token
-	}
-
-	users, res, err := u.GetAllUsers(ctx, pageToken)
-	if err != nil {
-		return nil, nil, err
-	}
-	resources := make([]any, len(users))
-	for i, user := range users {
-		resources[i] = &user
-	}
-
-	return resources, res, nil
-}
-
-func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]any, *gitlabSDK.Response, error) {
+func (u *userBuilder) getUsers(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]any, *gitlabSDK.Response, error) {
 	var users []any
 	var res *gitlabSDK.Response
 	var err error
@@ -113,9 +89,9 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 			users = append(users, member)
 		}
 
-		pending, _, err := u.Invites.ListPendingGroupInvitations(groupId, nil)
+		pending, _, err := u.ListExternalGroupMembers(ctx, groupId)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error listing pending group invitations: %w", err)
+			return nil, nil, fmt.Errorf("error listing external group members: %w", err)
 		}
 
 		for _, invite := range pending {
@@ -174,41 +150,7 @@ func (u *userBuilder) CreateAccount(
 	annotations.Annotations,
 	error,
 ) {
-	if u.IsOnPremise {
-		return u.createOnPremUser(accountInfo, credentialOptions)
-	}
 	return u.createCloudUser(ctx, accountInfo)
-}
-
-func (u *userBuilder) createOnPremUser(
-	accountInfo *v2.AccountInfo,
-	credentialOptions *v2.CredentialOptions,
-) (
-	connectorbuilder.CreateAccountResponse,
-	[]*v2.PlaintextData,
-	annotations.Annotations,
-	error,
-) {
-	createUserOpts, generatedPassword, err := u.getCreateUserOptions(accountInfo, credentialOptions)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	user, _, err := u.Users.CreateUser(createUserOpts)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	userResource, err := userResource(user)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	car := &v2.CreateAccountResponse_SuccessResult{
-		Resource: userResource,
-	}
-
-	return car, []*v2.PlaintextData{{Bytes: []byte(generatedPassword)}}, nil, nil
 }
 
 func (u *userBuilder) createCloudUser(
@@ -308,48 +250,6 @@ func getCredentialOption(credentialOptions *v2.CredentialOptions) (string, bool,
 
 func ToPtr[T any](v T) *T {
 	return &v
-}
-
-func (u *userBuilder) getCreateUserOptions(accountInfo *v2.AccountInfo, credentialOptions *v2.CredentialOptions) (*gitlabSDK.CreateUserOptions, string, error) {
-	pMap := accountInfo.Profile.AsMap()
-
-	email, ok := pMap["email"].(string)
-	if !ok || email == "" {
-		return nil, "", fmt.Errorf("email is required")
-	}
-
-	username, ok := pMap["username"].(string)
-	if !ok || username == "" {
-		return nil, "", fmt.Errorf("username is required")
-	}
-
-	name, ok := pMap["name"].(string)
-	if !ok || name == "" {
-		return nil, "", fmt.Errorf("name is required")
-	}
-
-	password, generatedPassword, err := getCredentialOption(credentialOptions)
-	if err != nil {
-		return nil, "", err
-	}
-
-	createUserOpts := &gitlabSDK.CreateUserOptions{
-		Email:    &email,
-		Username: &username,
-		Name:     &name,
-	}
-
-	if generatedPassword {
-		createUserOpts.Password = &password
-	} else {
-		createUserOpts.ForceRandomPassword = ToPtr(true)
-	}
-
-	if samlGroupID, ok := pMap["group_id_for_saml"].(string); ok && samlGroupID != "" {
-		createUserOpts.GroupIDForSAML = &samlGroupID
-	}
-
-	return createUserOpts, password, nil
 }
 
 func newUserBuilder(client *gitlab.Client) *userBuilder {

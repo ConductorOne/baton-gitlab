@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
+	"github.com/conductorone/baton-gitlab/pkg/onprem"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
@@ -13,15 +14,25 @@ import (
 )
 
 type Connector struct {
-	Client *gitlab.Client
+	SdkClient    *gitlab.Client
+	onpremClient *onprem.Client
 }
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
+	// the user resource syncers are different for on-premise and cloud GitLab due to
+	// pagination being different: https://conductorone.atlassian.net/browse/BB-1128
+	var userResource connectorbuilder.ResourceSyncer
+	if d.SdkClient.IsOnPremise {
+		userResource = newUserOnPremBuilder(d.SdkClient, d.onpremClient)
+	} else {
+		userResource = newUserBuilder(d.SdkClient)
+	}
+
 	return []connectorbuilder.ResourceSyncer{
-		newUserBuilder(d.Client),
-		newGroupBuilder(d.Client),
-		newProjectBuilder(d.Client),
+		userResource,
+		newGroupBuilder(d.SdkClient),
+		newProjectBuilder(d.SdkClient),
 	}
 }
 
@@ -86,9 +97,9 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
 // to be sure that they are valid.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
-	if !d.Client.IsOnPremise && d.Client.AccountCreationGroup != "" {
-		groupName := d.Client.AccountCreationGroup
-		groups, _, err := d.Client.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
+	if !d.SdkClient.IsOnPremise && d.SdkClient.AccountCreationGroup != "" {
+		groupName := d.SdkClient.AccountCreationGroup
+		groups, _, err := d.SdkClient.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
 			Search: &groupName,
 		},
 			gitlabSDK.WithContext(ctx),
@@ -101,7 +112,7 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 			return nil, fmt.Errorf("account creation group not found")
 		}
 	} else {
-		_, _, err := d.Client.ListGroups(ctx, "")
+		_, _, err := d.SdkClient.ListGroups(ctx, "")
 		if err != nil {
 			return nil, fmt.Errorf("error listing groups: %w", err)
 		}
@@ -112,12 +123,18 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 
 // New returns a new instance of the connector.
 func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Connector, error) {
-	client, err := gitlab.NewClient(ctx, accessToken, baseURL, accountCreationGroup)
+	gitlabClient, err := gitlab.NewClient(ctx, accessToken, baseURL, accountCreationGroup)
 	if err != nil {
 		return nil, fmt.Errorf("error creating gitlab client: %w", err)
 	}
 
+	httpClient, err := onprem.New(ctx, accessToken, baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("error creating http client: %w", err)
+	}
+
 	return &Connector{
-		Client: client,
+		SdkClient:    gitlabClient,
+		onpremClient: httpClient,
 	}, nil
 }

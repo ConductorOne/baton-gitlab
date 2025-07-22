@@ -2,9 +2,9 @@ package gitlab
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
@@ -34,7 +34,7 @@ func (o *Client) ListGroups(ctx context.Context, nextPageStr string) ([]*gitlabS
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, res, wrapError(err, res)
+		return nil, res, err
 	}
 
 	return groups, res, nil
@@ -51,9 +51,27 @@ func (o *Client) ListGroupMembers(ctx context.Context, groupId string) ([]*gitla
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, res, wrapError(err, res)
+		return nil, res, err
 	}
 
+	return users, res, nil
+}
+
+func (o *Client) ListExternalGroupMembers(ctx context.Context, groupId string) ([]*gitlabSDK.PendingInvite, *gitlabSDK.Response, error) {
+	users, res, err := o.Invites.ListPendingGroupInvitations(groupId, &gitlabSDK.ListPendingInvitationsOptions{
+		ListOptions: gitlabSDK.ListOptions{},
+	},
+		gitlabSDK.WithContext(ctx),
+	)
+	if err != nil {
+		if res == nil {
+			return nil, nil, fmt.Errorf("gitlab-connector: error listing external group members: %w", err)
+		}
+		// handle the case where the user does not have permissions to the external group
+		if res.StatusCode != http.StatusForbidden {
+			return nil, res, err
+		}
+	}
 	return users, res, nil
 }
 
@@ -87,7 +105,7 @@ func (o *Client) ListGroupMembersPaginate(ctx context.Context, groupId string, n
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, res, wrapError(err, res)
+		return nil, res, err
 	}
 
 	return users, res, nil
@@ -106,7 +124,7 @@ func (o *Client) AddGroupMember(ctx context.Context, groupId string, userId int,
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return wrapError(err, res)
+		return err
 	}
 
 	return nil
@@ -127,9 +145,9 @@ func (o *Client) InviteGroupMember(ctx context.Context, groupId, userEmail strin
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		body, readErr := io.ReadAll(res.Body)
 		if readErr != nil {
-			return errors.Join(wrapError(err, res), fmt.Errorf("failed to invite user: status=%d, could not read response body: %w", res.StatusCode, readErr))
+			return fmt.Errorf("failed to invite user: status=%d, could not read response body: %w", res.StatusCode, readErr)
 		}
-		return errors.Join(wrapError(err, res), fmt.Errorf("failed to invite user: status=%d body=%s", res.StatusCode, string(body)))
+		return fmt.Errorf("failed to invite user: status=%d, body=%s: %w", res.StatusCode, body, err)
 	}
 
 	return nil
@@ -146,7 +164,7 @@ func (o *Client) RemoveGroupMember(ctx context.Context, groupId string, userId i
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return wrapError(err, res)
+		return err
 	}
 
 	return nil
