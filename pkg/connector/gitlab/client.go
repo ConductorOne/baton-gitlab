@@ -2,14 +2,12 @@ package gitlab
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type Client struct {
@@ -27,11 +25,7 @@ func (t *errorWrappingTransport) RoundTrip(req *http.Request) (*http.Response, e
 
 	// Handle rate limiting regardless of error state
 	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
-		st := status.New(codes.Unavailable, resp.Status)
-		if err != nil {
-			return resp, errors.Join(st.Err(), err)
-		}
-		return resp, st.Err()
+		return resp, uhttp.WrapErrorsWithRateLimitInfo(codes.Unavailable, resp, err)
 	}
 
 	return resp, err
