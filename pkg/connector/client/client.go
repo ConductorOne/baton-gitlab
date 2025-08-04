@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 
@@ -61,7 +62,7 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 	}, nil
 }
 
-func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (headers *http.Header, rateLimit *v2.RateLimitDescription, err error) {
+func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
 	relativeURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse endpoint: %w", err)
@@ -90,12 +91,12 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 	if err != nil {
 		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer func() {
-		closeErr := response.Body.Close()
-		if err == nil && closeErr != nil {
-			err = fmt.Errorf("failed to close response body: %w", closeErr)
+	defer func(respBody io.ReadCloser) {
+		closeErr := respBody.Close()
+		if closeErr != nil {
+			log.Printf("warning: failed to close response body: %v", closeErr)
 		}
-	}()
+	}(response.Body)
 
 	if response.StatusCode >= 300 {
 		apiError := CheckResponse(response)
