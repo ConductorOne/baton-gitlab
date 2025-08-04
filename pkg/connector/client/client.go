@@ -61,7 +61,7 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 	}, nil
 }
 
-func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
+func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (headers *http.Header, rateLimit *v2.RateLimitDescription, err error) {
 	relativeURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse endpoint: %w", err)
