@@ -13,7 +13,6 @@ type User struct {
 	LastActivityOn *ISOTime `json:"last_activity_on"`
 }
 
-// GitLab API docs: https://docs.gitlab.com/ee/api/invitations.html
 type PendingInviteUser struct {
 	InviteEmail string `json:"invite_email"`
 }
