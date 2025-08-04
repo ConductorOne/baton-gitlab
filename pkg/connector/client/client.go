@@ -91,12 +91,13 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 	if err != nil {
 		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}
-	defer func(respBody io.ReadCloser) {
-		closeErr := respBody.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, response.Body)
+		closeErr := response.Body.Close()
 		if closeErr != nil {
 			log.Printf("warning: failed to close response body: %v", closeErr)
 		}
-	}(response.Body)
+	}()
 
 	if response.StatusCode >= 300 {
 		apiError := CheckResponse(response)
@@ -104,7 +105,6 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 			return &response.Header, &rateLimitData, apiError
 		}
 	}
-	_, _ = io.Copy(io.Discard, response.Body)
 
 	return &response.Header, &rateLimitData, nil
 }
