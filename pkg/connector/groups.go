@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
+	"github.com/conductorone/baton-gitlab/pkg/connector/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
@@ -16,50 +16,20 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
-	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 type groupBuilder struct {
-	*gitlab.Client
+	client *client.GitlabClient
 }
 
-var accessLevels = []gitlabSDK.AccessLevelValue{
-	gitlabSDK.MinimalAccessPermissions,
-	gitlabSDK.GuestPermissions,
-	gitlabSDK.ReporterPermissions,
-	gitlabSDK.DeveloperPermissions,
-	gitlabSDK.MaintainerPermissions,
-	gitlabSDK.OwnerPermissions,
-}
-
-func groupResource(group *gitlabSDK.Group, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	profile := map[string]interface{}{
-		"id":          group.ID,
-		"name":        group.Name,
-		"full_name":   group.FullName,
-		"description": group.Description,
-	}
-	if group.ParentID != 0 {
-		profile["parent_group_id"] = group.ParentID
-	}
-
-	return resourceSdk.NewGroupResource(
-		group.FullName,
-		groupResourceType,
-		toGroupResourceId(strconv.Itoa(group.ID)),
-		[]resourceSdk.GroupTraitOption{
-			resourceSdk.WithGroupProfile(
-				profile,
-			),
-		},
-		resourceSdk.WithAnnotation(
-			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
-		),
-		resourceSdk.WithParentResourceID(parentResourceID),
-	)
+var groupAccessLevels = []client.AccessLevelValue{
+	client.GuestPermissions,
+	client.ReporterPermissions,
+	client.DeveloperPermissions,
+	client.MaintainerPermissions,
+	client.OwnerPermissions,
 }
 
 func (o *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
@@ -68,43 +38,42 @@ func (o *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 
 func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var (
-		groups    []*gitlabSDK.Group
-		res       *gitlabSDK.Response
-		pageToken string
-		err       error
+		groups            []*client.Group
+		outputAnnotations = annotations.New()
+		pageToken         string
+		err               error
 	)
 	if pToken != nil {
 		pageToken = pToken.Token
 	}
 
-	groups, res, err = o.ListGroups(ctx, pageToken)
+	groups, nextPageToken, rateLimitDesc, err := o.client.ListGroups(ctx, pageToken)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", outputAnnotations, err
 	}
 
 	outResources := make([]*v2.Resource, 0, len(groups))
 	for _, group := range groups {
 		shouldCreateResource, err := parentResourceIsParentGroup(group.ParentID, parentResourceID)
 		if err != nil {
-			return nil, "", nil, err
+			return nil, "", outputAnnotations, err
 		}
 
 		if !shouldCreateResource {
 			continue
 		}
 
-		resource, err := groupResource(group, parentResourceID)
+		resource, err := groupResource(group, parentResourceID, o.client.IsOnPremise)
 		if err != nil {
-			return nil, "", nil, err
+			return nil, "", outputAnnotations, err
 		}
 		outResources = append(outResources, resource)
 	}
 
-	var nextPage string
-	if res != nil && res.NextPage != 0 {
-		nextPage = strconv.Itoa(res.NextPage)
-	}
-	return outResources, nextPage, nil, nil
+	return outResources, nextPageToken, outputAnnotations, nil
 }
 
 // parentResourceIsParentGroup validates that the parentResourceID received by the function call belongs to the corresponding parent group.
@@ -135,60 +104,17 @@ func parentResourceIsParentGroup(parentGroupId int, parentResourceID *v2.Resourc
 	return parentGroupId == parentId, nil
 }
 
-func AccessLevelString(level gitlabSDK.AccessLevelValue) string {
-	switch level {
-	case gitlabSDK.NoPermissions:
-		return "None"
-	case gitlabSDK.MinimalAccessPermissions:
-		return "Minimal"
-	case gitlabSDK.GuestPermissions:
-		return "Guest"
-	case gitlabSDK.ReporterPermissions:
-		return "Reporter"
-	case gitlabSDK.DeveloperPermissions:
-		return "Developer"
-	case gitlabSDK.MaintainerPermissions:
-		return "Maintainer"
-	case gitlabSDK.OwnerPermissions:
-		return "Owner"
-	case gitlabSDK.AdminPermissions:
-		return "Admin"
-	}
-	return ""
-}
-
-func AccessLevel(level string) gitlabSDK.AccessLevelValue {
-	switch level {
-	case "None":
-		return gitlabSDK.NoPermissions
-	case "Minimal":
-		return gitlabSDK.MinimalAccessPermissions
-	case "Guest":
-		return gitlabSDK.GuestPermissions
-	case "Reporter":
-		return gitlabSDK.ReporterPermissions
-	case "Developer":
-		return gitlabSDK.DeveloperPermissions
-	case "Maintainer":
-		return gitlabSDK.MaintainerPermissions
-	case "Owner":
-		return gitlabSDK.OwnerPermissions
-	case "Admin":
-		return gitlabSDK.AdminPermissions
-	default:
-		return gitlabSDK.NoPermissions
-	}
-}
-
 func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
-	rv := make([]*v2.Entitlement, 0, len(accessLevels))
-	for _, level := range accessLevels {
+	rv := make([]*v2.Entitlement, 0, len(groupAccessLevels))
+
+	for _, level := range groupAccessLevels {
+		levelName := level.String()
 		rv = append(rv, entitlement.NewAssignmentEntitlement(
 			resource,
-			AccessLevelString(level),
+			levelName,
 			entitlement.WithGrantableTo(userResourceType),
-			entitlement.WithDisplayName(fmt.Sprintf("%s Group %s", resource.DisplayName, AccessLevelString(level))),
-			entitlement.WithDescription(fmt.Sprintf("%s on the %s group in Gitlab", AccessLevelString(level), resource.DisplayName)),
+			entitlement.WithDisplayName(fmt.Sprintf("%s Group %s", resource.DisplayName, levelName)),
+			entitlement.WithDescription(fmt.Sprintf("%s on the %s group in Gitlab", levelName, resource.DisplayName)),
 		))
 	}
 	return rv, "", nil, nil
@@ -196,47 +122,34 @@ func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ 
 
 func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var outGrants []*v2.Grant
-
-	var users []*gitlabSDK.GroupMember
-	var res *gitlabSDK.Response
+	var outputAnnotations = annotations.New()
+	var users []*client.GroupMember
 	var err error
 	groupId, err := fromGroupResourceId(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
-	if pToken.Token == "" {
-		users, res, err = o.ListGroupMembers(ctx, groupId)
-	} else {
-		users, res, err = o.ListGroupMembersPaginate(ctx, groupId, pToken.Token)
+	users, nextPageToken, rateLimitDesc, err := o.client.ListGroupMembers(ctx, groupId, pToken.Token)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		return nil, "", nil, err
-	}
-
-	var nextPage string
-	if res.NextPage != 0 {
-		nextPage = strconv.Itoa(res.NextPage)
+		return nil, "", outputAnnotations, err
 	}
 
 	for _, user := range users {
 		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("error creating principal ID: %w", err)
+			return nil, "", outputAnnotations, fmt.Errorf("error creating principal ID: %w", err)
 		}
 
 		outGrants = append(outGrants, grant.NewGrant(
 			resource,
-			AccessLevelString(user.AccessLevel),
+			client.AccessLevelValue(user.AccessLevel).String(),
 			principalId,
 		))
 	}
-	return outGrants, nextPage, nil, nil
-}
-
-func newGroupBuilder(client *gitlab.Client) *groupBuilder {
-	return &groupBuilder{
-		Client: client,
-	}
+	return outGrants, nextPageToken, outputAnnotations, nil
 }
 
 func (o *groupBuilder) Grant(
@@ -248,6 +161,7 @@ func (o *groupBuilder) Grant(
 	error,
 ) {
 	l := ctxzap.Extract(ctx)
+	var outputAnnotations = annotations.New()
 
 	if strings.HasPrefix(principal.Id.Resource, pendingInvitationUser) {
 		return nil, fmt.Errorf("entitlement cannot be granted: user %q has not yet accepted the invitation to gitlab", principal.Id.Resource)
@@ -263,6 +177,7 @@ func (o *groupBuilder) Grant(
 	if err != nil {
 		return nil, err
 	}
+
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
 		l.Warn("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
@@ -281,50 +196,101 @@ func (o *groupBuilder) Grant(
 			}
 		}
 		l.Info("baton-gitlab grant: inviting user to group", zap.String("email", userEmail))
-		err = o.InviteGroupMember(ctx, groupId, userEmail, accessLevelValue)
-		if err != nil {
-			return nil, fmt.Errorf("error inviting user to group: %w", err)
+		rateLimitDesc, err := o.client.InviteGroupMember(ctx, groupId, userEmail, client.AccessLevelValue(accessLevelValue))
+		if rateLimitDesc != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDesc)
 		}
-		return nil, nil
+		if err != nil {
+			return outputAnnotations, fmt.Errorf("error inviting user to group: %w", err)
+		}
+		return outputAnnotations, nil
 	}
 
-	err = o.AddGroupMember(ctx, groupId, userId, accessLevelValue)
+	memberRequest := &client.AddGroupMemberRequest{
+		UserID:      userId,
+		AccessLevel: client.AccessLevelValue(accessLevelValue),
+	}
+	_, rateLimitDesc, err := o.client.AddGroupMember(ctx, groupId, memberRequest)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
 	if err != nil {
-		var errResp *gitlabSDK.ErrorResponse
+		var errResp *client.ErrorResponse
 		if errors.As(err, &errResp) {
-			// Case the user has already been assigned that grant
 			if errResp.Response != nil && errResp.Response.StatusCode == http.StatusConflict {
 				return annotations.New(&v2.GrantAlreadyExists{}), nil
 			}
-			// Case: ignore error: The access level to be assigned must be higher or equal to the one inherited from the parent group.
 			if strings.Contains(err.Error(), "should be greater than or equal to") {
 				return annotations.New(&v2.GrantAlreadyExists{}), nil
 			}
 		}
-		return nil, fmt.Errorf("error adding user to group: %w", err)
+		return outputAnnotations, fmt.Errorf("error adding user to group: %w", err)
 	}
-	return nil, nil
+	return outputAnnotations, nil
 }
 
 func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	var outputAnnotations = annotations.New()
+
 	groupIdAndName := grant.Entitlement.Resource.Id.Resource
 	groupId, err := fromGroupResourceId(groupIdAndName)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
 
-	userId, err := strconv.Atoi(grant.Principal.Id.Resource)
-	if err != nil {
-		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+	rateLimitDesc, err := o.client.RemoveGroupMember(ctx, groupId, grant.Principal.Id.Resource)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
-
-	err = o.RemoveGroupMember(ctx, groupId, userId)
 	if err != nil {
-		if errors.Is(err, gitlabSDK.ErrNotFound) {
+		if errors.Is(err, client.ErrNotFound) {
 			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
 		}
-		return nil, fmt.Errorf("error removing user from group: %w", err)
+		return outputAnnotations, fmt.Errorf("error removing user from group: %w", err)
 	}
 
-	return nil, nil
+	return outputAnnotations, nil
+}
+
+func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
+	profile := map[string]interface{}{
+		"id":          group.ID,
+		"name":        group.Name,
+		"full_name":   group.FullName,
+		"description": group.Description,
+	}
+	if group.ParentID != 0 {
+		profile["parent_group_id"] = group.ParentID
+	}
+
+	var annotations []proto.Message
+	if !isOnPremise {
+		annotations = []proto.Message{
+			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
+		}
+	} else {
+		annotations = []proto.Message{
+			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
+		}
+	}
+
+	return resourceSdk.NewGroupResource(
+		group.FullName,
+		groupResourceType,
+		toGroupResourceId(strconv.Itoa(group.ID)),
+		[]resourceSdk.GroupTraitOption{
+			resourceSdk.WithGroupProfile(profile),
+		},
+		resourceSdk.WithAnnotation(annotations...),
+		resourceSdk.WithParentResourceID(parentResourceID),
+	)
+}
+
+func newGroupBuilder(client *client.GitlabClient) *groupBuilder {
+	return &groupBuilder{
+		client: client,
+	}
 }

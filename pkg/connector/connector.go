@@ -5,23 +5,24 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
+	"github.com/conductorone/baton-gitlab/pkg/connector/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
-	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
 type Connector struct {
-	Client *gitlab.Client
+	client *client.GitlabClient
 }
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
 	return []connectorbuilder.ResourceSyncer{
-		newUserBuilder(d.Client),
-		newGroupBuilder(d.Client),
-		newProjectBuilder(d.Client),
+		newUserBuilder(d.client),
+		newGroupBuilder(d.client),
+		newProjectBuilder(d.client),
 	}
 }
 
@@ -86,22 +87,22 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
 // to be sure that they are valid.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
-	if !d.Client.IsOnPremise && d.Client.AccountCreationGroup != "" {
-		groupName := d.Client.AccountCreationGroup
-		groups, _, err := d.Client.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
-			Search: &groupName,
-		},
-			gitlabSDK.WithContext(ctx),
-		)
+	if !d.client.IsOnPremise && d.client.AccountCreationGroup != "" {
+		groupName := d.client.AccountCreationGroup
+
+		groups, _, _, err := d.client.SearchGroups(ctx, groupName, "")
 		if err != nil {
-			return nil, fmt.Errorf("error getting account creation group: %w", err)
+			return nil, fmt.Errorf("error searching for account creation group: %w", err)
 		}
 
 		if len(groups) == 0 {
-			return nil, fmt.Errorf("account creation group not found")
+			return nil, fmt.Errorf("account creation group '%s' not found", groupName)
+		}
+		if len(groups) > 1 {
+			return nil, fmt.Errorf("search for account creation group '%s' returned multiple results; please use an exact name", groupName)
 		}
 	} else {
-		_, _, err := d.Client.ListGroups(ctx, "")
+		_, _, _, err := d.client.ListGroups(ctx, "")
 		if err != nil {
 			return nil, fmt.Errorf("error listing groups: %w", err)
 		}
@@ -112,12 +113,15 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 
 // New returns a new instance of the connector.
 func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Connector, error) {
-	client, err := gitlab.NewClient(ctx, accessToken, baseURL, accountCreationGroup)
+	l := ctxzap.Extract(ctx)
+
+	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup)
 	if err != nil {
-		return nil, fmt.Errorf("error creating gitlab client: %w", err)
+		l.Error("error creating gitlab client", zap.Error(err))
+		return nil, err
 	}
 
 	return &Connector{
-		Client: client,
+		client: gitlabClient,
 	}, nil
 }

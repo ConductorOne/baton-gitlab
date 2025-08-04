@@ -1,0 +1,318 @@
+package client
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+
+	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
+	"github.com/conductorone/baton-sdk/pkg/uhttp"
+)
+
+type GitlabClient struct {
+	httpClient           *uhttp.BaseHttpClient
+	baseURL              string
+	AccountCreationGroup string
+	IsOnPremise          bool
+}
+
+type transport struct {
+	BaseURL     string
+	rt          http.RoundTripper
+	accessToken string
+}
+
+func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Host == "" {
+		baseURL, err := url.Parse(t.BaseURL)
+		if err != nil {
+			return nil, err
+		}
+		req.URL = baseURL.ResolveReference(req.URL)
+	}
+
+	req.Header.Set("Private-Token", t.accessToken)
+	req.Header.Set("User-Agent", "baton-gitlab/1.0")
+
+	return t.rt.RoundTrip(req)
+}
+
+func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*GitlabClient, error) {
+	client := &http.Client{
+		Transport: &transport{
+			BaseURL:     baseURL,
+			rt:          http.DefaultTransport,
+			accessToken: accessToken,
+		},
+	}
+
+	httpClient, err := uhttp.NewBaseHttpClientWithContext(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GitlabClient{
+		httpClient:           httpClient,
+		baseURL:              baseURL,
+		AccountCreationGroup: accountCreationGroup,
+		IsOnPremise:          baseURL != "https://gitlab.com/",
+	}, nil
+}
+
+func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
+	relativeURL, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse endpoint: %w", err)
+	}
+
+	var requestOptions []uhttp.RequestOption
+	requestOptions = append(requestOptions, uhttp.WithAcceptJSONHeader())
+	if body != nil {
+		requestOptions = append(requestOptions, uhttp.WithContentTypeJSONHeader(), uhttp.WithJSONBody(body))
+	}
+
+	request, err := c.httpClient.NewRequest(ctx, method, relativeURL, requestOptions...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	var rateLimitData v2.RateLimitDescription
+	doOptions := []uhttp.DoOption{
+		uhttp.WithRatelimitData(&rateLimitData),
+	}
+	if target != nil {
+		doOptions = append(doOptions, uhttp.WithJSONResponse(target))
+	}
+
+	response, err := c.httpClient.Do(request, doOptions...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() {
+		closeErr := response.Body.Close()
+		if err == nil && closeErr != nil {
+			err = fmt.Errorf("failed to close response body: %w", closeErr)
+		}
+	}()
+
+	if response.StatusCode >= 300 {
+		apiError := CheckResponse(response)
+		if apiError != nil {
+			return &response.Header, &rateLimitData, apiError
+		}
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+
+	return &response.Header, &rateLimitData, nil
+}
+
+// ListUsers retrieves all users from GitLab API.
+func (c *GitlabClient) ListUsers(ctx context.Context, nextPageToken string) ([]*User, string, *v2.RateLimitDescription, error) {
+	var users []*User
+
+	apiURL, _ := url.Parse("/api/v4/users")
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &users, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return users, nextToken, rateLimitDesc, nil
+}
+
+// CreateUser creates a new user in GitLab.
+func (c *GitlabClient) CreateUser(ctx context.Context, userRequest *CreateUserOptions) (*User, *v2.RateLimitDescription, error) {
+	var user User
+
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodPost, "/api/v4/users", &user, userRequest)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &user, rateLimitDesc, nil
+}
+
+// DeleteUser deletes a user from GitLab.
+func (c *GitlabClient) DeleteUser(ctx context.Context, userID string) (*v2.RateLimitDescription, error) {
+	path := fmt.Sprintf("/api/v4/users/%s", PathEscape(userID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodDelete, path, nil, nil)
+
+	return rateLimitDesc, err
+}
+
+// ListGroups retrieves all groups from GitLab API.
+func (c *GitlabClient) ListGroups(ctx context.Context, nextPageToken string) ([]*Group, string, *v2.RateLimitDescription, error) {
+	var groups []*Group
+
+	apiURL, _ := url.Parse("/api/v4/groups")
+	query := apiURL.Query()
+	query.Set("owned", "true")
+	apiURL.RawQuery = query.Encode()
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &groups, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return groups, nextToken, rateLimitDesc, nil
+}
+
+// GetGroup retrieves a specific group by ID.
+func (c *GitlabClient) GetGroup(ctx context.Context, groupID string) (*Group, *v2.RateLimitDescription, error) {
+	var group Group
+
+	path := fmt.Sprintf("/api/v4/groups/%s", PathEscape(groupID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, path, &group, nil)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &group, rateLimitDesc, nil
+}
+
+// ListGroupMembers retrieves members of a specific group.
+func (c *GitlabClient) ListGroupMembers(ctx context.Context, groupID string, nextPageToken string) ([]*GroupMember, string, *v2.RateLimitDescription, error) {
+	var members []*GroupMember
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/members", PathEscape(groupID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &members, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return members, nextToken, rateLimitDesc, nil
+}
+
+// AddGroupMember adds a member to a group.
+func (c *GitlabClient) AddGroupMember(ctx context.Context, groupID string, memberRequest *AddGroupMemberRequest) (*GroupMember, *v2.RateLimitDescription, error) {
+	var member GroupMember
+
+	path := fmt.Sprintf("/api/v4/groups/%s/members", PathEscape(groupID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodPost, path, &member, memberRequest)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &member, rateLimitDesc, nil
+}
+
+// RemoveGroupMember removes a member from a group.
+func (c *GitlabClient) RemoveGroupMember(ctx context.Context, groupID, userID string) (*v2.RateLimitDescription, error) {
+	path := fmt.Sprintf("/api/v4/groups/%s/members/%s", PathEscape(groupID), PathEscape(userID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodDelete, path, nil, nil)
+
+	return rateLimitDesc, err
+}
+
+// SearchGroups searches for groups by name.
+func (c *GitlabClient) SearchGroups(ctx context.Context, search string, nextPageToken string) ([]*Group, string, *v2.RateLimitDescription, error) {
+	var groups []*Group
+
+	apiURL, _ := url.Parse("/api/v4/groups")
+	WithSearch(apiURL, search)
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &groups, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return groups, nextToken, rateLimitDesc, nil
+}
+
+// InviteGroupMember invites a member to a group.
+func (c *GitlabClient) InviteGroupMember(ctx context.Context, groupID string, userEmail string, accessLevel AccessLevelValue) (*v2.RateLimitDescription, error) {
+	inviteRequest := &InviteGroupMemberRequest{
+		Email:       userEmail,
+		AccessLevel: accessLevel,
+	}
+	path := fmt.Sprintf("/api/v4/groups/%s/invitations", PathEscape(groupID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodPost, path, nil, inviteRequest)
+
+	return rateLimitDesc, err
+}
+
+// ListPendingGroupInvitations lists pending invitations for a group.
+func (c *GitlabClient) ListPendingGroupInvitations(ctx context.Context, groupID string, nextPageToken string) ([]*PendingInviteUser, string, *v2.RateLimitDescription, error) {
+	var pendingInvites []*PendingInviteUser
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/invitations", PathEscape(groupID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &pendingInvites, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return pendingInvites, nextToken, rateLimitDesc, nil
+}
+
+// ListProjects retrieves all projects from GitLab API.
+func (c *GitlabClient) ListProjects(ctx context.Context, groupID string, nextPageToken string) ([]*Project, string, *v2.RateLimitDescription, error) {
+	var projects []*Project
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/projects", PathEscape(groupID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &projects, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return projects, nextToken, rateLimitDesc, nil
+}
+
+// GetProject retrieves a specific project by ID.
+func (c *GitlabClient) GetProject(ctx context.Context, projectID string) (*Project, *v2.RateLimitDescription, error) {
+	var project Project
+
+	path := fmt.Sprintf("/api/v4/projects/%s", PathEscape(projectID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, path, &project, nil)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &project, rateLimitDesc, nil
+}
+
+// ListProjectMembers retrieves members of a specific project.
+func (c *GitlabClient) ListProjectMembers(ctx context.Context, projectID string, nextPageToken string) ([]*ProjectMember, string, *v2.RateLimitDescription, error) {
+	var members []*ProjectMember
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/projects/%s/members/all", PathEscape(projectID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &members, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return members, nextToken, rateLimitDesc, nil
+}
+
+// AddProjectMember adds a member to a project.
+func (c *GitlabClient) AddProjectMember(ctx context.Context, projectID string, memberRequest *AddProjectMemberRequest) (*ProjectMember, *v2.RateLimitDescription, error) {
+	var member ProjectMember
+
+	path := fmt.Sprintf("/api/v4/projects/%s/members", PathEscape(projectID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodPost, path, &member, memberRequest)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &member, rateLimitDesc, nil
+}
+
+// RemoveProjectMember removes a member from a project.
+func (c *GitlabClient) RemoveProjectMember(ctx context.Context, projectID, userID string) (*v2.RateLimitDescription, error) {
+	path := fmt.Sprintf("/api/v4/projects/%s/members/%s", PathEscape(projectID), PathEscape(userID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodDelete, path, nil, nil)
+
+	return rateLimitDesc, err
+}
