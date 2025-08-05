@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -368,34 +367,6 @@ func (u *userBuilder) getCreateUserOptions(accountInfo *v2.AccountInfo, credenti
 	}
 
 	return createUserReq, password, nil
-}
-
-func (u *userBuilder) getGroupID(ctx context.Context) (string, *v2.RateLimitDescription, error) {
-	groupName := u.client.AccountCreationGroup
-	nextPageToken := ""
-
-	var lastRateLimitDesc *v2.RateLimitDescription
-	for {
-		groups, returnedNextPageToken, rateLimitDesc, err := u.client.ListGroups(ctx, nextPageToken)
-		lastRateLimitDesc = rateLimitDesc
-		if err != nil {
-			return "", lastRateLimitDesc, fmt.Errorf("error listing groups: %w", err)
-		}
-
-		for _, group := range groups {
-			if group.Name == groupName {
-				return strconv.Itoa(group.ID), lastRateLimitDesc, nil
-			}
-		}
-
-		if returnedNextPageToken == "" {
-			break
-		}
-
-		nextPageToken = returnedNextPageToken
-	}
-
-	return "", lastRateLimitDesc, fmt.Errorf("account creation group %s not found", groupName)
 }
 
 func (u *userBuilder) Delete(ctx context.Context, id *v2.ResourceId) (annotations.Annotations, error) {

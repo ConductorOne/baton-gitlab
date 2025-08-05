@@ -25,6 +25,7 @@ type groupBuilder struct {
 }
 
 var groupAccessLevels = []client.AccessLevelValue{
+	client.MinimalAccessPermissions,
 	client.GuestPermissions,
 	client.ReporterPermissions,
 	client.DeveloperPermissions,
@@ -178,6 +179,25 @@ func (o *groupBuilder) Grant(
 		return nil, err
 	}
 
+	// GitLab does not allow assigning the 'Minimal Access' role to subgroups.
+	// This check ensures that the group is a top-level group by verifying that
+	// the 'parent_group_id' trait is not present. If the field exists, it means
+	// the group is a subgroup, and the grant should be rejected to prevent API errors.
+	//
+	// Additionally, assigning 'Minimal Access' requires the user to have a license
+	// that allows membership in top-level groups. This role is limited in scope
+	// and cannot be applied to subgroups due to GitLab's permission model.
+	if client.AccessLevelValue(accessLevelValue) == client.MinimalAccessPermissions {
+		groupTrait, err := resourceSdk.GetGroupTrait(entitlement.Resource)
+		if err != nil {
+			return outputAnnotations, fmt.Errorf("failed to get group profile for validation: %w", err)
+		}
+
+		if parentID := groupTrait.Profile.AsMap()["parent_group_id"]; parentID != nil {
+			return outputAnnotations, fmt.Errorf("cannot grant 'Minimal Access': this role is only available for top-level groups, not subgroups")
+		}
+	}
+
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
 		l.Warn("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
@@ -264,17 +284,12 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 	}
 
 	var annotations []proto.Message
+	annotations = []proto.Message{
+		&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+		&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
+	}
 	if !isOnPremise {
-		annotations = []proto.Message{
-			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
-		}
-	} else {
-		annotations = []proto.Message{
-			&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
-			&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
-		}
+		annotations = append(annotations, &v2.ChildResourceType{ResourceTypeId: userResourceType.Id})
 	}
 
 	return resourceSdk.NewGroupResource(

@@ -89,22 +89,33 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
 	if !d.client.IsOnPremise && d.client.AccountCreationGroup != "" {
 		groupName := d.client.AccountCreationGroup
-
-		groups, _, _, err := d.client.SearchGroups(ctx, groupName, "")
-		if err != nil {
-			return nil, fmt.Errorf("error searching for account creation group: %w", err)
+		var matchingGroups []*client.Group
+		nextPageToken := ""
+		for {
+			groups, returnedNextPageToken, _, err := d.client.ListGroups(ctx, nextPageToken)
+			if err != nil {
+				return nil, fmt.Errorf("error listing groups to validate account creation group: %w", err)
+			}
+			for _, group := range groups {
+				if group.Name == groupName {
+					matchingGroups = append(matchingGroups, group)
+				}
+			}
+			if returnedNextPageToken == "" {
+				break
+			}
+			nextPageToken = returnedNextPageToken
 		}
-
-		if len(groups) == 0 {
+		if len(matchingGroups) == 0 {
 			return nil, fmt.Errorf("account creation group '%s' not found", groupName)
 		}
-		if len(groups) > 1 {
-			return nil, fmt.Errorf("search for account creation group '%s' returned multiple results; please use an exact name", groupName)
+		if len(matchingGroups) > 1 {
+			return nil, fmt.Errorf("search for account creation group '%s' returned multiple results with that exact name", groupName)
 		}
-	} else {
-		_, _, _, err := d.client.ListGroups(ctx, "")
+	} else if d.client.IsOnPremise {
+		_, _, _, err := d.client.ListUsers(ctx, "")
 		if err != nil {
-			return nil, fmt.Errorf("error listing groups: %w", err)
+			return nil, fmt.Errorf("error validating token with ListUsers: %w", err)
 		}
 	}
 

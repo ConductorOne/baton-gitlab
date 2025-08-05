@@ -41,7 +41,7 @@ While developing the connector, please fill out this form. This information is n
 
 1. What credentials or information are needed to set up the connector? (For example, API key, client ID and secret, domain, etc.)
     - DC version (on-premise/self-hosted): Requires an API key and a base url. Args: --access-token and --base-url
-    - Cloud version: Cloud version: Requires an API key for synchronization. To enable account provisioning or deprovisioning, you must also provide the name of an existing GitLab group — only users within this group can be added or removed. 
+    - Cloud version: Requires an API key for synchronization. To enable account provisioning or deprovisioning, you must also provide the name of an existing GitLab group — only users within this group can be added or removed. 
       Use the --access-token and --account-creation-group arguments
 
 
