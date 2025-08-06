@@ -1,10 +1,14 @@
 package client
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
+
+	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 )
 
 func WithOffsetPagination(url *url.URL, nextPageToken string) {
@@ -126,4 +130,43 @@ func (a AccessLevelValue) String() string {
 	default:
 		return ""
 	}
+}
+
+// FindGroupByName searches for groups across all pages and then filters for an exact match.
+func (c *GitlabClient) FindGroupByName(ctx context.Context, groupName string) (*Group, *v2.RateLimitDescription, error) {
+	var allCandidateGroups []*Group
+	var lastRateLimitDesc *v2.RateLimitDescription
+	nextPageToken := ""
+
+	for {
+		candidateGroups, returnedNextPageToken, rateLimitDesc, err := c.SearchGroups(ctx, groupName, nextPageToken)
+		lastRateLimitDesc = rateLimitDesc
+		if err != nil {
+			return nil, lastRateLimitDesc, fmt.Errorf("error searching for group '%s': %w", groupName, err)
+		}
+
+		allCandidateGroups = append(allCandidateGroups, candidateGroups...)
+
+		if returnedNextPageToken == "" {
+			break
+		}
+		nextPageToken = returnedNextPageToken
+	}
+
+	var exactMatches []*Group
+	for _, group := range allCandidateGroups {
+		if group.Name == groupName {
+			exactMatches = append(exactMatches, group)
+		}
+	}
+
+	if len(exactMatches) == 0 {
+		return nil, lastRateLimitDesc, fmt.Errorf("group '%s' not found among potential matches", groupName)
+	}
+
+	if len(exactMatches) > 1 {
+		return nil, lastRateLimitDesc, fmt.Errorf("search for group '%s' returned multiple exact matches by name", groupName)
+	}
+
+	return exactMatches[0], lastRateLimitDesc, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -228,6 +229,7 @@ func (u *userBuilder) createCloudUser(
 	error,
 ) {
 	var outputAnnotations = annotations.New()
+	groupName := u.client.AccountCreationGroup
 	profile := accountInfo.GetProfile().AsMap()
 
 	email, ok := profile["email"].(string)
@@ -235,7 +237,7 @@ func (u *userBuilder) createCloudUser(
 		return nil, nil, nil, fmt.Errorf("missing required field: email")
 	}
 
-	groupID, rateLimitDesc, err := u.getGroupID(ctx)
+	group, rateLimitDesc, err := u.client.FindGroupByName(ctx, groupName)
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
@@ -243,7 +245,7 @@ func (u *userBuilder) createCloudUser(
 		return nil, nil, outputAnnotations, fmt.Errorf("failed to get group ID: %w", err)
 	}
 
-	members, _, rateLimitDescMembers, err := u.client.ListGroupMembers(ctx, groupID, "")
+	members, _, rateLimitDescMembers, err := u.client.ListGroupMembers(ctx, strconv.Itoa(group.ID), "")
 	if rateLimitDescMembers != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDescMembers)
 	}
@@ -260,7 +262,7 @@ func (u *userBuilder) createCloudUser(
 	}
 
 	if user == nil {
-		rateLimitDescInvite, err := u.client.InviteGroupMember(ctx, groupID, email, client.GuestPermissions)
+		rateLimitDescInvite, err := u.client.InviteGroupMember(ctx, strconv.Itoa(group.ID), email, client.GuestPermissions)
 		if rateLimitDescInvite != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDescInvite)
 		}
@@ -269,7 +271,7 @@ func (u *userBuilder) createCloudUser(
 		}
 	}
 
-	parentResourceID, err := resourceSdk.NewResourceID(groupResourceType, groupID)
+	parentResourceID, err := resourceSdk.NewResourceID(groupResourceType, strconv.Itoa(group.ID))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create parent resource ID: %w", err)
 	}
@@ -371,6 +373,7 @@ func (u *userBuilder) getCreateUserOptions(accountInfo *v2.AccountInfo, credenti
 
 func (u *userBuilder) Delete(ctx context.Context, id *v2.ResourceId) (annotations.Annotations, error) {
 	outputAnnotations := annotations.New()
+	groupName := u.client.AccountCreationGroup
 
 	if u.client.IsOnPremise {
 		rateLimitDesc, err := u.client.DeleteUser(ctx, id.Resource)
@@ -381,7 +384,7 @@ func (u *userBuilder) Delete(ctx context.Context, id *v2.ResourceId) (annotation
 			return outputAnnotations, fmt.Errorf("failed to delete user %s from GitLab: %w", id.Resource, err)
 		}
 	} else {
-		groupID, rateLimitDesc, err := u.getGroupID(ctx)
+		group, rateLimitDesc, err := u.client.FindGroupByName(ctx, groupName)
 		if err != nil {
 			if rateLimitDesc != nil {
 				outputAnnotations.WithRateLimiting(rateLimitDesc)
@@ -389,12 +392,12 @@ func (u *userBuilder) Delete(ctx context.Context, id *v2.ResourceId) (annotation
 			return outputAnnotations, fmt.Errorf("failed to get group ID for deprovisioning: %w", err)
 		}
 
-		rateLimitDesc, err = u.client.RemoveGroupMember(ctx, groupID, id.Resource)
+		rateLimitDesc, err = u.client.RemoveGroupMember(ctx, strconv.Itoa(group.ID), id.Resource)
 		if rateLimitDesc != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDesc)
 		}
 		if err != nil {
-			return outputAnnotations, fmt.Errorf("failed to remove user %s from group %s: %w", id.Resource, groupID, err)
+			return outputAnnotations, fmt.Errorf("failed to remove user %s from group %s: %w", id.Resource, strconv.Itoa(group.ID), err)
 		}
 	}
 
