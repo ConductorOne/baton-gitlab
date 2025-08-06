@@ -188,12 +188,7 @@ func (o *groupBuilder) Grant(
 	// that allows membership in top-level groups. This role is limited in scope
 	// and cannot be applied to subgroups due to GitLab's permission model.
 	if client.AccessLevelValue(accessLevelValue) == client.MinimalAccessPermissions {
-		groupTrait, err := resourceSdk.GetGroupTrait(entitlement.Resource)
-		if err != nil {
-			return outputAnnotations, fmt.Errorf("failed to get group profile for validation: %w", err)
-		}
-
-		if parentID := groupTrait.Profile.AsMap()["parent_group_id"]; parentID != nil {
+		if entitlement.Resource.ParentResourceId != nil {
 			return outputAnnotations, fmt.Errorf("cannot grant 'Minimal Access': this role is only available for top-level groups, not subgroups")
 		}
 	}
