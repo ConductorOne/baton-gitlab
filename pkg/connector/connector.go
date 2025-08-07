@@ -84,27 +84,31 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 	}, nil
 }
 
-// Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
-
-// to be sure that they are valid.
-
+// Validate is called to ensure that the connector is properly configured. It should exercise any API credentials.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
-	// For Cloud, if an account creation group is set, validate it exists and is unique.
-	if !d.client.IsOnPremise && d.client.AccountCreationGroup != "" {
-		groupName := d.client.AccountCreationGroup
-
-		_, _, err := d.client.FindGroupByName(ctx, groupName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate account creation group: %w", err)
+	if !d.client.IsOnPremise {
+		// Logic for GitLab Cloud.
+		if d.client.AccountCreationGroup != "" {
+			// If an account creation group is set, validate it exists and is unique.
+			groupName := d.client.AccountCreationGroup
+			_, _, err := d.client.FindGroupByName(ctx, groupName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to validate account creation group: %w", err)
+			}
+		} else {
+			// If no account creation group is set, perform a general token validation.
+			_, _, _, err := d.client.ListGroups(ctx, "")
+			if err != nil {
+				return nil, fmt.Errorf("error validating token with ListGroups: %w", err)
+			}
 		}
-	} else if d.client.IsOnPremise {
+	} else {
 		// For On-Premise, validate the token can list users (requires admin permissions).
 		_, _, _, err := d.client.ListUsers(ctx, "")
 		if err != nil {
 			return nil, fmt.Errorf("error validating token with ListUsers: %w", err)
 		}
 	}
-
 	return nil, nil
 }
 
