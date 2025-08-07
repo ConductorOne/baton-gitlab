@@ -32,3 +32,10 @@ func parseAccessLevelFromEntitlementID(entitlementID string) (int, error) {
 	}
 	return int(levelValue), nil
 }
+
+func getNextTokenState(currentType, nextPageFromAPI, nextTypeOnFinish string) cloudListToken {
+	if nextPageFromAPI != "" {
+		return cloudListToken{Type: currentType, Token: nextPageFromAPI}
+	}
+	return cloudListToken{Type: nextTypeOnFinish, Token: ""}
+}

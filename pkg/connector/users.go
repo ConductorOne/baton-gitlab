@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -17,7 +18,16 @@ import (
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
 
-const pendingInvitationUser = "pending-invite-"
+const (
+	pendingInvitationUser = "pending-invite-"
+	resourceTypeMembers   = "members"
+	resourceTypeInvites   = "invites"
+)
+
+type cloudListToken struct {
+	Type  string `json:"type"`
+	Token string `json:"token"`
+}
 
 type userBuilder struct {
 	client *client.GitlabClient
@@ -89,9 +99,15 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 	var err error
 	var nextPageToken string
 	var outputAnnotations = annotations.New()
-	var pageToken string
-	if pToken != nil {
-		pageToken = pToken.Token
+
+	tokenState := cloudListToken{
+		Type: resourceTypeMembers,
+	}
+	if pToken != nil && pToken.Token != "" {
+		err := json.Unmarshal([]byte(pToken.Token), &tokenState)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("invalid pagination token: %w", err)
+		}
 	}
 
 	switch parentResourceID.ResourceType {
@@ -101,54 +117,67 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 			return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 		}
 
-		var groupMembers []*client.GroupMember
-		var rateLimitDescGroupMembers *v2.RateLimitDescription
-		groupMembers, nextPageToken, rateLimitDescGroupMembers, err = u.client.ListGroupMembers(ctx, groupId, pageToken)
-		if rateLimitDescGroupMembers != nil {
-			outputAnnotations.WithRateLimiting(rateLimitDescGroupMembers)
-		}
-		if err != nil {
-			return nil, "", outputAnnotations, err
-		}
+		switch tokenState.Type {
+		case resourceTypeMembers:
+			var groupMembers []*client.GroupMember
+			var rateLimitDescGroupMembers *v2.RateLimitDescription
+			groupMembers, nextPageToken, rateLimitDescGroupMembers, err = u.client.ListGroupMembers(ctx, groupId, tokenState.Token)
+			if rateLimitDescGroupMembers != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDescGroupMembers)
+			}
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			for _, member := range groupMembers {
+				users = append(users, member)
+			}
 
-		for _, member := range groupMembers {
-			users = append(users, member)
-		}
+			tokenState = getNextTokenState(resourceTypeMembers, nextPageToken, resourceTypeInvites)
 
-		var pendingInvites []*client.PendingInviteUser
-		var rateLimitDescInvites *v2.RateLimitDescription
-		pendingInvites, _, rateLimitDescInvites, err = u.client.ListPendingGroupInvitations(ctx, groupId, pageToken)
-		if rateLimitDescInvites != nil {
-			outputAnnotations.WithRateLimiting(rateLimitDescInvites)
-		}
-		if err != nil {
-			return nil, "", outputAnnotations, err
-		}
+		case resourceTypeInvites:
+			var pendingInvites []*client.PendingInviteUser
+			var rateLimitDescInvites *v2.RateLimitDescription
+			pendingInvites, nextPageToken, rateLimitDescInvites, err = u.client.ListPendingGroupInvitations(ctx, groupId, tokenState.Token)
+			if rateLimitDescInvites != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDescInvites)
+			}
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			for _, invite := range pendingInvites {
+				users = append(users, invite)
+			}
 
-		for _, invite := range pendingInvites {
-			users = append(users, invite)
+			tokenState = getNextTokenState(resourceTypeInvites, nextPageToken, "")
 		}
 
 	case projectResourceType.Id:
 		var projectMembers []*client.ProjectMember
 		var rateLimitDescProjectMembers *v2.RateLimitDescription
-		projectMembers, nextPageToken, rateLimitDescProjectMembers, err = u.client.ListProjectMembers(ctx, parentResourceID.Resource, pageToken)
+		projectMembers, nextPageToken, rateLimitDescProjectMembers, err = u.client.ListProjectMembers(ctx, parentResourceID.Resource, tokenState.Token)
 		if rateLimitDescProjectMembers != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDescProjectMembers)
 		}
 		if err != nil {
 			return nil, "", outputAnnotations, err
 		}
-
 		for _, member := range projectMembers {
 			users = append(users, member)
 		}
 
-	default:
-		return nil, "", outputAnnotations, fmt.Errorf("unsupported parent resource type: %s", parentResourceID.ResourceType)
+		tokenState = getNextTokenState(resourceTypeMembers, nextPageToken, "")
 	}
 
-	return users, nextPageToken, outputAnnotations, nil
+	var finalNextPageToken string
+	if tokenState.Type != "" || tokenState.Token != "" {
+		nextTokenBytes, err := json.Marshal(tokenState)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("failed to marshal pagination token: %w", err)
+		}
+		finalNextPageToken = string(nextTokenBytes)
+	}
+
+	return users, finalNextPageToken, outputAnnotations, nil
 }
 
 // Entitlements always returns an empty slice for users.
