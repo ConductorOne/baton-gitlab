@@ -5,34 +5,24 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
-	"github.com/conductorone/baton-gitlab/pkg/onprem"
+	"github.com/conductorone/baton-gitlab/pkg/connector/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
-	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
 type Connector struct {
-	SdkClient    *gitlab.Client
-	onpremClient *onprem.Client
+	client *client.GitlabClient
 }
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
-	// the user resource syncers are different for on-premise and cloud GitLab due to
-	// pagination being different: https://conductorone.atlassian.net/browse/BB-1128
-	var userResource connectorbuilder.ResourceSyncer
-	if d.SdkClient.IsOnPremise {
-		userResource = newUserOnPremBuilder(d.SdkClient, d.onpremClient)
-	} else {
-		userResource = newUserBuilder(d.SdkClient)
-	}
-
 	return []connectorbuilder.ResourceSyncer{
-		userResource,
-		newGroupBuilder(d.SdkClient),
-		newProjectBuilder(d.SdkClient),
+		newUserBuilder(d.client),
+		newGroupBuilder(d.client),
+		newProjectBuilder(d.client),
 	}
 }
 
@@ -94,47 +84,45 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 	}, nil
 }
 
-// Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
-// to be sure that they are valid.
+// Validate is called to ensure that the connector is properly configured. It should exercise any API credentials.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
-	if !d.SdkClient.IsOnPremise && d.SdkClient.AccountCreationGroup != "" {
-		groupName := d.SdkClient.AccountCreationGroup
-		groups, _, err := d.SdkClient.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
-			Search: &groupName,
-		},
-			gitlabSDK.WithContext(ctx),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error getting account creation group: %w", err)
-		}
-
-		if len(groups) == 0 {
-			return nil, fmt.Errorf("account creation group not found")
+	if !d.client.IsOnPremise {
+		// Logic for GitLab Cloud.
+		if d.client.AccountCreationGroup != "" {
+			// If an account creation group is set, validate it exists and is unique.
+			groupName := d.client.AccountCreationGroup
+			_, _, err := d.client.FindGroupByName(ctx, groupName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to validate account creation group: %w", err)
+			}
+		} else {
+			// If no account creation group is set, perform a general token validation.
+			_, _, _, err := d.client.ListGroups(ctx, "")
+			if err != nil {
+				return nil, fmt.Errorf("error validating token with ListGroups: %w", err)
+			}
 		}
 	} else {
-		_, _, err := d.SdkClient.ListGroups(ctx, "")
+		// For On-Premise, validate the token can list users (requires admin permissions).
+		_, _, _, err := d.client.ListUsers(ctx, "")
 		if err != nil {
-			return nil, fmt.Errorf("error listing groups: %w", err)
+			return nil, fmt.Errorf("error validating token with ListUsers: %w", err)
 		}
 	}
-
 	return nil, nil
 }
 
 // New returns a new instance of the connector.
 func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Connector, error) {
-	gitlabClient, err := gitlab.NewClient(ctx, accessToken, baseURL, accountCreationGroup)
-	if err != nil {
-		return nil, fmt.Errorf("error creating gitlab client: %w", err)
-	}
+	l := ctxzap.Extract(ctx)
 
-	httpClient, err := onprem.New(ctx, accessToken, baseURL)
+	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup)
 	if err != nil {
-		return nil, fmt.Errorf("error creating http client: %w", err)
+		l.Error("error creating gitlab client", zap.Error(err))
+		return nil, err
 	}
 
 	return &Connector{
-		SdkClient:    gitlabClient,
-		onpremClient: httpClient,
+		client: gitlabClient,
 	}, nil
 }

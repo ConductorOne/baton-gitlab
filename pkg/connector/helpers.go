@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
+	"github.com/conductorone/baton-gitlab/pkg/connector/client"
 )
 
 func toGroupResourceId(groupId string) string {
@@ -19,10 +19,23 @@ func fromGroupResourceId(groupResourceId string) (string, error) {
 	return parts[1], nil
 }
 
-func parseAccessLevelFromEntitlementID(entitlementID string) (gitlabSDK.AccessLevelValue, error) {
+func parseAccessLevelFromEntitlementID(entitlementID string) (int, error) {
 	parts := strings.Split(entitlementID, ":")
 	if len(parts) != 3 {
 		return 0, fmt.Errorf("invalid entitlement ID: %s", entitlementID)
 	}
-	return AccessLevel(parts[2]), nil
+
+	levelName := parts[2]
+	levelValue, ok := client.GetAccessLevelByName(levelName)
+	if !ok {
+		return 0, fmt.Errorf("unknown access level: %s", levelName)
+	}
+	return int(levelValue), nil
+}
+
+func getNextTokenState(currentType, nextPageFromAPI, nextTypeOnFinish string) cloudListToken {
+	if nextPageFromAPI != "" {
+		return cloudListToken{Type: currentType, Token: nextPageFromAPI}
+	}
+	return cloudListToken{Type: nextTypeOnFinish, Token: ""}
 }

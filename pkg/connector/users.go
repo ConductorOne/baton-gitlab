@@ -2,122 +2,182 @@ package connector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/conductorone/baton-gitlab/pkg/connector/gitlab"
+	"github.com/conductorone/baton-gitlab/pkg/connector/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 	"github.com/conductorone/baton-sdk/pkg/crypto"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
-	gitlabSDK "gitlab.com/gitlab-org/api/client-go"
 )
 
-const pendingInvitationUser = "pending-invite-"
+const (
+	pendingInvitationUser = "pending-invite-"
+	resourceTypeMembers   = "members"
+	resourceTypeInvites   = "invites"
+)
 
-type userBuilder struct {
-	*gitlab.Client
+type cloudListToken struct {
+	Type  string `json:"type"`
+	Token string `json:"token"`
 }
 
-func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
+type userBuilder struct {
+	client *client.GitlabClient
+}
+
+func (u *userBuilder) ResourceType(_ context.Context) *v2.ResourceType {
 	return userResourceType
 }
 
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	if parentResourceID == nil {
-		return nil, "", nil, nil
-	}
-
 	var (
-		users []any
-		res   *gitlabSDK.Response
-		err   error
+		users         []any
+		nextPageToken string
+		ann           annotations.Annotations
+		err           error
 	)
 
-	users, res, err = u.getUsers(ctx, parentResourceID, pToken)
+	if u.client.IsOnPremise {
+		users, nextPageToken, ann, err = u.listOnPremiseVersion(ctx, pToken)
+	} else {
+		if parentResourceID == nil {
+			return nil, "", nil, nil
+		}
+		users, nextPageToken, ann, err = u.listCloudVersion(ctx, parentResourceID, pToken)
+	}
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", ann, err
 	}
 
 	outResources := make([]*v2.Resource, 0, len(users))
 	for _, user := range users {
 		resource, err := userResource(user)
 		if err != nil {
-			return nil, "", nil, err
+			return nil, "", ann, err
 		}
 		outResources = append(outResources, resource)
 	}
 
-	var nextPage string
-	if res != nil && res.NextPage != 0 {
-		nextPage = strconv.Itoa(res.NextPage)
-	}
-
-	return outResources, nextPage, nil, nil
+	return outResources, nextPageToken, ann, nil
 }
 
-func (u *userBuilder) getUsers(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]any, *gitlabSDK.Response, error) {
+func (u *userBuilder) listOnPremiseVersion(ctx context.Context, pToken *pagination.Token) ([]any, string, annotations.Annotations, error) {
+	var pageToken string
+	if pToken != nil {
+		pageToken = pToken.Token
+	}
+
+	outputAnnotations := annotations.New()
+	users, nextPageToken, rateLimitDesc, err := u.client.ListUsers(ctx, pageToken)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
+	if err != nil {
+		return nil, "", outputAnnotations, fmt.Errorf("failed to list users: %w", err)
+	}
+
+	resources := make([]any, len(users))
+	for i, user := range users {
+		resources[i] = user
+	}
+
+	return resources, nextPageToken, outputAnnotations, nil
+}
+
+func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]any, string, annotations.Annotations, error) {
 	var users []any
-	var res *gitlabSDK.Response
 	var err error
+	var nextPageToken string
+	var outputAnnotations = annotations.New()
+
+	tokenState := cloudListToken{
+		Type: resourceTypeMembers,
+	}
+	if pToken != nil && pToken.Token != "" {
+		err := json.Unmarshal([]byte(pToken.Token), &tokenState)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("invalid pagination token: %w", err)
+		}
+	}
 
 	switch parentResourceID.ResourceType {
 	case groupResourceType.Id:
 		groupId, err := fromGroupResourceId(parentResourceID.Resource)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error parsing group resource id: %w", err)
+			return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 		}
 
-		var groupMembers []*gitlabSDK.GroupMember
-		if pToken.Token == "" {
-			groupMembers, res, err = u.ListGroupMembers(ctx, groupId)
-		} else {
-			groupMembers, res, err = u.ListGroupMembersPaginate(ctx, groupId, pToken.Token)
-		}
-		if err != nil {
-			return nil, nil, err
-		}
+		switch tokenState.Type {
+		case resourceTypeMembers:
+			var groupMembers []*client.GroupMember
+			var rateLimitDescGroupMembers *v2.RateLimitDescription
+			groupMembers, nextPageToken, rateLimitDescGroupMembers, err = u.client.ListGroupMembers(ctx, groupId, tokenState.Token)
+			if rateLimitDescGroupMembers != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDescGroupMembers)
+			}
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			for _, member := range groupMembers {
+				users = append(users, member)
+			}
 
-		for _, member := range groupMembers {
-			users = append(users, member)
-		}
+			tokenState = getNextTokenState(resourceTypeMembers, nextPageToken, resourceTypeInvites)
 
-		pending, _, err := u.ListExternalGroupMembers(ctx, groupId)
-		if err != nil {
-			return nil, nil, fmt.Errorf("error listing external group members: %w", err)
-		}
+		case resourceTypeInvites:
+			var pendingInvites []*client.PendingInviteUser
+			var rateLimitDescInvites *v2.RateLimitDescription
+			pendingInvites, nextPageToken, rateLimitDescInvites, err = u.client.ListPendingGroupInvitations(ctx, groupId, tokenState.Token)
+			if rateLimitDescInvites != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDescInvites)
+			}
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			for _, invite := range pendingInvites {
+				users = append(users, invite)
+			}
 
-		for _, invite := range pending {
-			users = append(users, invite)
+			tokenState = getNextTokenState(resourceTypeInvites, nextPageToken, "")
 		}
 
 	case projectResourceType.Id:
-		var projectMembers []*gitlabSDK.ProjectMember
-		if pToken.Token == "" {
-			projectMembers, res, err = u.ListProjectMembers(ctx, parentResourceID.Resource)
-		} else {
-			projectMembers, res, err = u.ListProjectMembersPaginate(ctx, parentResourceID.Resource, pToken.Token)
+		var projectMembers []*client.ProjectMember
+		var rateLimitDescProjectMembers *v2.RateLimitDescription
+		projectMembers, nextPageToken, rateLimitDescProjectMembers, err = u.client.ListProjectMembers(ctx, parentResourceID.Resource, tokenState.Token)
+		if rateLimitDescProjectMembers != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDescProjectMembers)
 		}
 		if err != nil {
-			return nil, nil, err
+			return nil, "", outputAnnotations, err
 		}
-
 		for _, member := range projectMembers {
 			users = append(users, member)
 		}
 
-	default:
-		return nil, nil, fmt.Errorf("unsupported parent resource type: %s", parentResourceID.ResourceType)
+		tokenState = getNextTokenState(resourceTypeMembers, nextPageToken, "")
 	}
 
-	return users, res, nil
+	var finalNextPageToken string
+	if tokenState.Type != "" || tokenState.Token != "" {
+		nextTokenBytes, err := json.Marshal(tokenState)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("failed to marshal pagination token: %w", err)
+		}
+		finalNextPageToken = string(nextTokenBytes)
+	}
+
+	return users, finalNextPageToken, outputAnnotations, nil
 }
 
 // Entitlements always returns an empty slice for users.
@@ -130,7 +190,7 @@ func (u *userBuilder) Grants(_ context.Context, _ *v2.Resource, _ *pagination.To
 	return nil, "", nil, nil
 }
 
-func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.CredentialDetailsAccountProvisioning, annotations.Annotations, error) {
+func (u *userBuilder) CreateAccountCapabilityDetails(_ context.Context) (*v2.CredentialDetailsAccountProvisioning, annotations.Annotations, error) {
 	return &v2.CredentialDetailsAccountProvisioning{
 		SupportedCredentialOptions: []v2.CapabilityDetailCredentialOption{
 			v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_NO_PASSWORD,
@@ -150,7 +210,42 @@ func (u *userBuilder) CreateAccount(
 	annotations.Annotations,
 	error,
 ) {
+	if u.client.IsOnPremise {
+		return u.createOnPremUser(ctx, accountInfo, credentialOptions)
+	}
 	return u.createCloudUser(ctx, accountInfo)
+}
+
+func (u *userBuilder) createOnPremUser(
+	ctx context.Context,
+	accountInfo *v2.AccountInfo,
+	credentialOptions *v2.CredentialOptions,
+) (
+	connectorbuilder.CreateAccountResponse,
+	[]*v2.PlaintextData,
+	annotations.Annotations,
+	error,
+) {
+	createUserOpts, generatedPassword, err := u.getCreateUserOptions(accountInfo, credentialOptions)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	user, _, err := u.client.CreateUser(ctx, createUserOpts)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	userResource, err := userResource(user)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	car := &v2.CreateAccountResponse_SuccessResult{
+		Resource: userResource,
+	}
+
+	return car, []*v2.PlaintextData{{Bytes: []byte(generatedPassword)}}, nil, nil
 }
 
 func (u *userBuilder) createCloudUser(
@@ -162,6 +257,8 @@ func (u *userBuilder) createCloudUser(
 	annotations.Annotations,
 	error,
 ) {
+	var outputAnnotations = annotations.New()
+	groupName := u.client.AccountCreationGroup
 	profile := accountInfo.GetProfile().AsMap()
 
 	email, ok := profile["email"].(string)
@@ -169,17 +266,23 @@ func (u *userBuilder) createCloudUser(
 		return nil, nil, nil, fmt.Errorf("missing required field: email")
 	}
 
-	groupID, err := u.getGroupID(ctx)
+	group, rateLimitDesc, err := u.client.FindGroupByName(ctx, groupName)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get group ID: %w", err)
+		return nil, nil, outputAnnotations, fmt.Errorf("failed to get group ID: %w", err)
 	}
 
-	members, _, err := u.ListGroupMembers(ctx, groupID)
+	members, _, rateLimitDescMembers, err := u.client.ListGroupMembers(ctx, strconv.Itoa(group.ID), "")
+	if rateLimitDescMembers != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDescMembers)
+	}
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to list group members: %w", err)
+		return nil, nil, outputAnnotations, fmt.Errorf("failed to list group members: %w", err)
 	}
 
-	var user *gitlabSDK.GroupMember
+	var user *client.GroupMember
 	for _, m := range members {
 		if m.Email == email {
 			user = m
@@ -188,13 +291,16 @@ func (u *userBuilder) createCloudUser(
 	}
 
 	if user == nil {
-		err = u.InviteGroupMember(ctx, groupID, email, gitlabSDK.GuestPermissions)
+		rateLimitDescInvite, err := u.client.InviteGroupMember(ctx, strconv.Itoa(group.ID), email, client.GuestPermissions)
+		if rateLimitDescInvite != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDescInvite)
+		}
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to invite user to group: %w", err)
+			return nil, nil, outputAnnotations, fmt.Errorf("failed to invite user to group: %w", err)
 		}
 	}
 
-	parentResourceID, err := resourceSdk.NewResourceID(groupResourceType, groupID)
+	parentResourceID, err := resourceSdk.NewResourceID(groupResourceType, strconv.Itoa(group.ID))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to create parent resource ID: %w", err)
 	}
@@ -252,30 +358,79 @@ func ToPtr[T any](v T) *T {
 	return &v
 }
 
-func newUserBuilder(client *gitlab.Client) *userBuilder {
-	return &userBuilder{
-		Client: client,
+func (u *userBuilder) getCreateUserOptions(accountInfo *v2.AccountInfo, credentialOptions *v2.CredentialOptions) (*client.CreateUserOptions, string, error) {
+	pMap := accountInfo.Profile.AsMap()
+
+	email, ok := pMap["email"].(string)
+	if !ok || email == "" {
+		return nil, "", fmt.Errorf("email is required")
 	}
+
+	username, ok := pMap["username"].(string)
+	if !ok || username == "" {
+		return nil, "", fmt.Errorf("username is required")
+	}
+
+	name, ok := pMap["name"].(string)
+	if !ok || name == "" {
+		return nil, "", fmt.Errorf("name is required")
+	}
+
+	password, generatedPassword, err := getCredentialOption(credentialOptions)
+	if err != nil {
+		return nil, "", err
+	}
+
+	createUserReq := &client.CreateUserOptions{
+		Email:    &email,
+		Username: &username,
+		Name:     &name,
+	}
+
+	if generatedPassword {
+		createUserReq.Password = &password
+	} else {
+		createUserReq.ForceRandomPassword = ToPtr(true)
+	}
+
+	if samlGroupID, ok := pMap["group_id_for_saml"].(string); ok && samlGroupID != "" {
+		createUserReq.GroupIDForSAML = &samlGroupID
+	}
+
+	return createUserReq, password, nil
 }
 
-func (u *userBuilder) getGroupID(ctx context.Context) (string, error) {
-	groupName := u.AccountCreationGroup
-	groups, _, err := u.Groups.ListGroups(&gitlabSDK.ListGroupsOptions{
-		Search: &groupName,
-	},
-		gitlabSDK.WithContext(ctx),
-	)
-	if err != nil {
-		return "", fmt.Errorf("error listing groups: %w", err)
-	}
+func (u *userBuilder) Delete(ctx context.Context, id *v2.ResourceId) (annotations.Annotations, error) {
+	outputAnnotations := annotations.New()
+	groupName := u.client.AccountCreationGroup
 
-	for _, group := range groups {
-		if group.Name == groupName {
-			return strconv.Itoa(group.ID), nil
+	if u.client.IsOnPremise {
+		rateLimitDesc, err := u.client.DeleteUser(ctx, id.Resource)
+		if rateLimitDesc != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDesc)
+		}
+		if err != nil {
+			return outputAnnotations, fmt.Errorf("failed to delete user %s from GitLab: %w", id.Resource, err)
+		}
+	} else {
+		group, rateLimitDesc, err := u.client.FindGroupByName(ctx, groupName)
+		if err != nil {
+			if rateLimitDesc != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDesc)
+			}
+			return outputAnnotations, fmt.Errorf("failed to get group ID for deprovisioning: %w", err)
+		}
+
+		rateLimitDesc, err = u.client.RemoveGroupMember(ctx, strconv.Itoa(group.ID), id.Resource)
+		if rateLimitDesc != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDesc)
+		}
+		if err != nil {
+			return outputAnnotations, fmt.Errorf("failed to remove user %s from group %s: %w", id.Resource, strconv.Itoa(group.ID), err)
 		}
 	}
 
-	return "", fmt.Errorf("account creation group %s not found", groupName)
+	return outputAnnotations, nil
 }
 
 func userResource(user any) (*v2.Resource, error) {
@@ -293,21 +448,21 @@ func userResource(user any) (*v2.Resource, error) {
 	var lastLogin time.Time
 
 	switch user := user.(type) {
-	case *gitlabSDK.GroupMember:
+	case *client.GroupMember:
 		id = user.ID
 		email = user.Email
 		state = user.State
 		name = user.Name
 		username = user.Username
-		accessLevel = int(user.AccessLevel)
-	case *gitlabSDK.ProjectMember:
+		accessLevel = user.AccessLevel
+	case *client.ProjectMember:
 		id = user.ID
 		email = user.Email
 		state = user.State
 		name = user.Name
 		username = user.Username
-		accessLevel = int(user.AccessLevel)
-	case *gitlabSDK.User:
+		accessLevel = user.AccessLevel
+	case *client.User:
 		id = user.ID
 		email = user.Email
 		state = user.State
@@ -316,7 +471,7 @@ func userResource(user any) (*v2.Resource, error) {
 		if user.LastActivityOn != nil && !time.Time(*user.LastActivityOn).IsZero() {
 			lastLogin = time.Time(*user.LastActivityOn)
 		}
-	case *gitlabSDK.PendingInvite:
+	case *client.PendingInviteUser:
 		email := user.InviteEmail
 		name := pendingInvitationUser + strings.ToLower(email)
 
@@ -373,4 +528,10 @@ func userResource(user any) (*v2.Resource, error) {
 		id,
 		userTraitOptions,
 	)
+}
+
+func newUserBuilder(client *client.GitlabClient) *userBuilder {
+	return &userBuilder{
+		client: client,
+	}
 }
