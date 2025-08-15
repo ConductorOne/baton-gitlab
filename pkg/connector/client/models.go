@@ -50,7 +50,7 @@ type ProjectMember struct {
 	AvatarURL         string        `json:"avatar_url"`
 	WebURL            string        `json:"web_url"`
 	AccessLevel       int           `json:"access_level"`
-	ExpiresAt         *time.Time    `json:"expires_at"`
+	ExpiresAt         *ISOTime    `json:"expires_at"`
 	GroupSAMLIdentity *SAMLIdentity `json:"group_saml_identity"`
 	Email             string        `json:"email"`
 }
