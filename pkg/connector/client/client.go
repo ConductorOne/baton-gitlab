@@ -150,7 +150,6 @@ func (c *GitlabClient) ListGroups(ctx context.Context, nextPageToken string) ([]
 
 	apiURL, _ := url.Parse("/api/v4/groups")
 	query := apiURL.Query()
-	query.Set("owned", "true")
 	apiURL.RawQuery = query.Encode()
 	WithOffsetPagination(apiURL, nextPageToken)
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &groups, nil)
