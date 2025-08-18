@@ -169,7 +169,7 @@ func (c *GitlabClient) ListPublicGroups(ctx context.Context, nextPageToken strin
 
 	apiURL, _ := url.Parse("/api/v4/groups")
 	query := apiURL.Query()
-	query.Set("public", "true")
+	query.Set("visibility", "public")
 	apiURL.RawQuery = query.Encode()
 	WithOffsetPagination(apiURL, nextPageToken)
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &groups, nil)
