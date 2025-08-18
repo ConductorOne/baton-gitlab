@@ -25,27 +25,6 @@ type GitlabClient struct {
 	accessToken          string
 }
 
-type transport struct {
-	BaseURL     string
-	rt          http.RoundTripper
-	accessToken string
-}
-
-func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Host == "" {
-		baseURL, err := url.Parse(t.BaseURL)
-		if err != nil {
-			return nil, err
-		}
-		req.URL = baseURL.ResolveReference(req.URL)
-	}
-
-	req.Header.Set("Private-Token", t.accessToken)
-	req.Header.Set("User-Agent", "baton-gitlab/1.0")
-
-	return t.rt.RoundTrip(req)
-}
-
 func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*GitlabClient, error) {
 	options := []uhttp.Option{uhttp.WithLogger(true, ctxzap.Extract(ctx)), uhttp.WithUserAgent("baton-gitlab/1.0")}
 
