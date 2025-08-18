@@ -8,9 +8,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -20,6 +22,7 @@ type GitlabClient struct {
 	baseURL              string
 	AccountCreationGroup string
 	IsOnPremise          bool
+	accessToken          string
 }
 
 type transport struct {
@@ -44,12 +47,11 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*GitlabClient, error) {
-	client := &http.Client{
-		Transport: &transport{
-			BaseURL:     baseURL,
-			rt:          http.DefaultTransport,
-			accessToken: accessToken,
-		},
+	options := []uhttp.Option{uhttp.WithLogger(true, ctxzap.Extract(ctx)), uhttp.WithUserAgent("baton-gitlab/1.0")}
+
+	client, err := uhttp.NewClient(ctx, options...)
+	if err != nil {
+		return nil, fmt.Errorf("creating HTTP client failed: %w", err)
 	}
 
 	httpClient, err := uhttp.NewBaseHttpClientWithContext(ctx, client)
@@ -57,22 +59,28 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 		return nil, err
 	}
 
+	baseURLTrimmed := strings.TrimRight(baseURL, "/")
+
 	return &GitlabClient{
 		httpClient:           httpClient,
-		baseURL:              baseURL,
+		baseURL:              baseURLTrimmed,
 		AccountCreationGroup: accountCreationGroup,
-		IsOnPremise:          baseURL != "https://gitlab.com/",
+		IsOnPremise:          baseURLTrimmed != "https://gitlab.com",
+		accessToken:          accessToken,
 	}, nil
 }
 
 func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
+	endpoint = fmt.Sprintf("%s%s", c.baseURL, endpoint)
 	relativeURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse endpoint: %w", err)
 	}
 
 	var requestOptions []uhttp.RequestOption
-	requestOptions = append(requestOptions, uhttp.WithAcceptJSONHeader())
+	requestOptions = append(requestOptions,
+		uhttp.WithAcceptJSONHeader(),
+		uhttp.WithHeader("Private-Token", c.accessToken))
 	if body != nil {
 		requestOptions = append(requestOptions, uhttp.WithContentTypeJSONHeader(), uhttp.WithJSONBody(body))
 	}
