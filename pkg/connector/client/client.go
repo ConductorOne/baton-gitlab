@@ -80,8 +80,10 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 	}
 
 	var rateLimitData v2.RateLimitDescription
+	var errorResponse GitlabError
 	doOptions := []uhttp.DoOption{
 		uhttp.WithRatelimitData(&rateLimitData),
+		uhttp.WithErrorResponse(&errorResponse),
 	}
 	if target != nil {
 		doOptions = append(doOptions, uhttp.WithJSONResponse(target))
@@ -246,6 +248,9 @@ func (c *GitlabClient) ListPendingGroupInvitations(ctx context.Context, groupID 
 	WithOffsetPagination(apiURL, nextPageToken)
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &pendingInvites, nil)
 	if err != nil {
+		if err == ErrForbidden {
+			return nil, "", nil, nil
+		}
 		return nil, "", rateLimitDesc, err
 	}
 
