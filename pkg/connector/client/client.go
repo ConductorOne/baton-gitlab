@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,8 @@ import (
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type GitlabClient struct {
@@ -80,8 +83,10 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 	}
 
 	var rateLimitData v2.RateLimitDescription
+	var errorResponse GitlabError
 	doOptions := []uhttp.DoOption{
 		uhttp.WithRatelimitData(&rateLimitData),
+		uhttp.WithErrorResponse(&errorResponse),
 	}
 	if target != nil {
 		doOptions = append(doOptions, uhttp.WithJSONResponse(target))
@@ -150,7 +155,6 @@ func (c *GitlabClient) ListGroups(ctx context.Context, nextPageToken string) ([]
 
 	apiURL, _ := url.Parse("/api/v4/groups")
 	query := apiURL.Query()
-	query.Set("owned", "true")
 	apiURL.RawQuery = query.Encode()
 	WithOffsetPagination(apiURL, nextPageToken)
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &groups, nil)
@@ -247,6 +251,9 @@ func (c *GitlabClient) ListPendingGroupInvitations(ctx context.Context, groupID 
 	WithOffsetPagination(apiURL, nextPageToken)
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &pendingInvites, nil)
 	if err != nil {
+		if status.Code(err) == codes.PermissionDenied || errors.Is(err, ErrForbidden) {
+			return nil, "", nil, nil
+		}
 		return nil, "", rateLimitDesc, err
 	}
 
