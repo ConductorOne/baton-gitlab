@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -20,8 +19,6 @@ import (
 
 const (
 	pendingInvitationUser = "pending-invite-"
-	resourceTypeMembers   = "members"
-	resourceTypeInvites   = "invites"
 )
 
 type cloudListToken struct {
@@ -100,61 +97,28 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 	var nextPageToken string
 	var outputAnnotations = annotations.New()
 
-	tokenState := cloudListToken{
-		Type: resourceTypeMembers,
-	}
-	if pToken != nil && pToken.Token != "" {
-		err := json.Unmarshal([]byte(pToken.Token), &tokenState)
-		if err != nil {
-			return nil, "", nil, fmt.Errorf("invalid pagination token: %w", err)
-		}
-	}
-
 	switch parentResourceID.ResourceType {
 	case groupResourceType.Id:
 		groupId, err := fromGroupResourceId(parentResourceID.Resource)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 		}
-
-		switch tokenState.Type {
-		case resourceTypeMembers:
-			var groupMembers []*client.GroupMember
-			var rateLimitDescGroupMembers *v2.RateLimitDescription
-			groupMembers, nextPageToken, rateLimitDescGroupMembers, err = u.client.ListGroupMembers(ctx, groupId, tokenState.Token)
-			if rateLimitDescGroupMembers != nil {
-				outputAnnotations.WithRateLimiting(rateLimitDescGroupMembers)
-			}
-			if err != nil {
-				return nil, "", outputAnnotations, err
-			}
-			for _, member := range groupMembers {
-				users = append(users, member)
-			}
-
-			tokenState = getNextTokenState(resourceTypeMembers, nextPageToken, resourceTypeInvites)
-
-		case resourceTypeInvites:
-			var pendingInvites []*client.PendingInviteUser
-			var rateLimitDescInvites *v2.RateLimitDescription
-			pendingInvites, nextPageToken, rateLimitDescInvites, err = u.client.ListPendingGroupInvitations(ctx, groupId, tokenState.Token)
-			if rateLimitDescInvites != nil {
-				outputAnnotations.WithRateLimiting(rateLimitDescInvites)
-			}
-			if err != nil {
-				return nil, "", outputAnnotations, err
-			}
-			for _, invite := range pendingInvites {
-				users = append(users, invite)
-			}
-
-			tokenState = getNextTokenState(resourceTypeInvites, nextPageToken, "")
+		var groupMembers []*client.GroupMember
+		var rateLimitDescGroupMembers *v2.RateLimitDescription
+		groupMembers, nextPageToken, rateLimitDescGroupMembers, err = u.client.ListAllGroupMembers(ctx, groupId, pToken.Token)
+		if rateLimitDescGroupMembers != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDescGroupMembers)
 		}
-
+		if err != nil {
+			return nil, "", outputAnnotations, err
+		}
+		for _, member := range groupMembers {
+			users = append(users, member)
+		}
 	case projectResourceType.Id:
 		var projectMembers []*client.ProjectMember
 		var rateLimitDescProjectMembers *v2.RateLimitDescription
-		projectMembers, nextPageToken, rateLimitDescProjectMembers, err = u.client.ListProjectMembers(ctx, parentResourceID.Resource, tokenState.Token)
+		projectMembers, nextPageToken, rateLimitDescProjectMembers, err = u.client.ListProjectMembers(ctx, parentResourceID.Resource, pToken.Token)
 		if rateLimitDescProjectMembers != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDescProjectMembers)
 		}
@@ -164,20 +128,9 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		for _, member := range projectMembers {
 			users = append(users, member)
 		}
-
-		tokenState = getNextTokenState(resourceTypeMembers, nextPageToken, "")
 	}
 
-	var finalNextPageToken string
-	if tokenState.Type != "" || tokenState.Token != "" {
-		nextTokenBytes, err := json.Marshal(tokenState)
-		if err != nil {
-			return nil, "", nil, fmt.Errorf("failed to marshal pagination token: %w", err)
-		}
-		finalNextPageToken = string(nextTokenBytes)
-	}
-
-	return users, finalNextPageToken, outputAnnotations, nil
+	return users, nextPageToken, outputAnnotations, nil
 }
 
 // Entitlements always returns an empty slice for users.
@@ -500,6 +453,7 @@ func userResource(user any) (*v2.Resource, error) {
 		userStatus = v2.UserTrait_Status_STATUS_DISABLED
 	case "pending":
 		userStatus = v2.UserTrait_Status_STATUS_UNSPECIFIED
+		name = pendingInvitationUser + strings.ToLower(email)
 	}
 
 	profile := map[string]interface{}{

@@ -190,6 +190,21 @@ func (c *GitlabClient) GetGroup(ctx context.Context, groupID string) (*Group, *v
 	return &group, rateLimitDesc, nil
 }
 
+// ListAllGroupMembers retrieves members and pending invites of a specific group.
+func (c *GitlabClient) ListAllGroupMembers(ctx context.Context, groupID string, nextPageToken string) ([]*GroupMember, string, *v2.RateLimitDescription, error) {
+	var members []*GroupMember
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/members/all", PathEscape(groupID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &members, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return members, nextToken, rateLimitDesc, nil
+}
+
 // ListGroupMembers retrieves members of a specific group.
 func (c *GitlabClient) ListGroupMembers(ctx context.Context, groupID string, nextPageToken string) ([]*GroupMember, string, *v2.RateLimitDescription, error) {
 	var members []*GroupMember
