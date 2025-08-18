@@ -20,9 +20,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const publicGroup = "public_group"
-const group = "group"
-
 type groupBuilder struct {
 	client *client.GitlabClient
 }
@@ -44,42 +41,17 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 	var (
 		groups            []*client.Group
 		outputAnnotations = annotations.New()
-		rateLimitDesc     *v2.RateLimitDescription
 		pageToken         string
-		nextPageToken     string
 		err               error
 	)
-	bag := &pagination.Bag{}
-	err = bag.Unmarshal(pToken.Token)
-	if err != nil {
-		return nil, "", nil, err
+	if pToken != nil {
+		pageToken = pToken.Token
 	}
 
-	if bag.Current() == nil {
-		bag.Push(pagination.PageState{
-			ResourceTypeID: publicGroup,
-		})
-		bag.Push(pagination.PageState{
-			ResourceTypeID: group,
-		})
-	}
-
-	pageToken = bag.PageToken()
-
-	switch bag.ResourceTypeID() {
-	case publicGroup:
-		groups, nextPageToken, rateLimitDesc, err = o.client.ListPublicGroups(ctx, pageToken)
-	case group:
-		groups, nextPageToken, rateLimitDesc, err = o.client.ListGroups(ctx, pageToken)
-	}
+	groups, nextPageToken, rateLimitDesc, err := o.client.ListGroups(ctx, pageToken)
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
-	if err != nil {
-		return nil, "", outputAnnotations, err
-	}
-
-	nextToken, err := bag.NextToken(nextPageToken)
 	if err != nil {
 		return nil, "", outputAnnotations, err
 	}
@@ -102,7 +74,7 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		outResources = append(outResources, resource)
 	}
 
-	return outResources, nextToken, outputAnnotations, nil
+	return outResources, nextPageToken, outputAnnotations, nil
 }
 
 // parentResourceIsParentGroup validates that the parentResourceID received by the function call belongs to the corresponding parent group.

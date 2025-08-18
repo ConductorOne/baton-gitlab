@@ -11,6 +11,8 @@ import (
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type GitlabClient struct {
@@ -164,23 +166,6 @@ func (c *GitlabClient) ListGroups(ctx context.Context, nextPageToken string) ([]
 	return groups, nextToken, rateLimitDesc, nil
 }
 
-func (c *GitlabClient) ListPublicGroups(ctx context.Context, nextPageToken string) ([]*Group, string, *v2.RateLimitDescription, error) {
-	var groups []*Group
-
-	apiURL, _ := url.Parse("/api/v4/groups")
-	query := apiURL.Query()
-	query.Set("visibility", "public")
-	apiURL.RawQuery = query.Encode()
-	WithOffsetPagination(apiURL, nextPageToken)
-	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &groups, nil)
-	if err != nil {
-		return nil, "", rateLimitDesc, err
-	}
-
-	nextToken := headers.Get("X-Next-Page")
-	return groups, nextToken, rateLimitDesc, nil
-}
-
 // GetGroup retrieves a specific group by ID.
 func (c *GitlabClient) GetGroup(ctx context.Context, groupID string) (*Group, *v2.RateLimitDescription, error) {
 	var group Group
@@ -266,7 +251,7 @@ func (c *GitlabClient) ListPendingGroupInvitations(ctx context.Context, groupID 
 	WithOffsetPagination(apiURL, nextPageToken)
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &pendingInvites, nil)
 	if err != nil {
-		if errors.Is(err, ErrForbidden) {
+		if status.Code(err) == codes.PermissionDenied || errors.Is(err, ErrForbidden) {
 			return nil, "", nil, nil
 		}
 		return nil, "", rateLimitDesc, err
