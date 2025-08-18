@@ -40,6 +40,8 @@ func (o *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 }
 
 func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: list groups", zap.Any("parentResourceID", parentResourceID))
 	if parentResourceID != nil {
 		return nil, "", nil, nil
 	}
@@ -276,7 +278,6 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 	var annotations []proto.Message
 	annotations = []proto.Message{
 		&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
-		&v2.ChildResourceType{ResourceTypeId: groupResourceType.Id},
 	}
 	if !isOnPremise {
 		annotations = append(annotations, &v2.ChildResourceType{ResourceTypeId: userResourceType.Id})
