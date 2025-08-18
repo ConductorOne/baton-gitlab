@@ -21,11 +21,6 @@ const (
 	pendingInvitationUser = "pending-invite-"
 )
 
-type cloudListToken struct {
-	Type  string `json:"type"`
-	Token string `json:"token"`
-}
-
 type userBuilder struct {
 	client *client.GitlabClient
 }
