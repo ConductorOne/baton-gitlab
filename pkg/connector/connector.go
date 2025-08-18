@@ -106,7 +106,7 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 				outputAnnotations.WithRateLimiting(rateLimitDesc)
 			}
 			if err != nil {
-				return outputAnnotations, fmt.Errorf("error validating token with ListGroups: %w", err)
+				return outputAnnotations, fmt.Errorf("error validating token with GetCurrentlyAuthenticatedUser: %w", err)
 			}
 		}
 	} else {
