@@ -40,6 +40,9 @@ func (o *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 }
 
 func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+	if parentResourceID != nil {
+		return nil, "", nil, nil
+	}
 	var (
 		groups            []*client.Group
 		outputAnnotations = annotations.New()
@@ -60,14 +63,7 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 
 	outResources := make([]*v2.Resource, 0, len(groups))
 	for _, group := range groups {
-		shouldCreateResource, err := parentResourceIsParentGroup(group.ParentID, parentResourceID)
-		if err != nil {
-			return nil, "", outputAnnotations, err
-		}
-
-		if !shouldCreateResource {
-			continue
-		}
+		parentResourceID = getParentGroup(group.ParentID)
 
 		resource, err := groupResource(group, parentResourceID, o.client.IsOnPremise)
 		if err != nil {
@@ -79,32 +75,20 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 	return outResources, nextPageToken, outputAnnotations, nil
 }
 
-// parentResourceIsParentGroup validates that the parentResourceID received by the function call belongs to the corresponding parent group.
-// The validation occurs between the ID on the group data (given by the API) and the ID of the parentResource.
 // parentGroupId will be 0 (zero) if the group isn't a subgroup. parentResourceID will be nil if no parent resource was received in the List function.
 // Both cases are checked and handled in this function.
-func parentResourceIsParentGroup(parentGroupId int, parentResourceID *v2.ResourceId) (bool, error) {
-	if parentGroupId != 0 && parentResourceID == nil {
+func getParentGroup(parentGroupId int) *v2.ResourceId {
+	if parentGroupId == 0 {
 		// This path occurs on the first execution of the List func. When all groups are received from the API. Subgroups will be skipped.
-		return false, nil
+		return nil
 	}
 
-	if parentResourceID == nil {
-		// If parentResourceID is null, is because it's a root group, not a subgroup, so there is no need to validate a parent group id, and it shouldn't be skipped.
-		return true, nil
+	parentGroupIdStr := strconv.Itoa(parentGroupId)
+	parentGroupResourceId := toGroupResourceId(parentGroupIdStr)
+	return &v2.ResourceId{
+		ResourceType: groupResourceType.Id,
+		Resource:     parentGroupResourceId,
 	}
-
-	parentIdSegments := strings.Split(parentResourceID.Resource, "/")
-	if len(parentIdSegments) < 2 {
-		return false, fmt.Errorf("error while segmenting the parentResourceID: %v It has less than 2 segments", parentResourceID)
-	}
-
-	parentId, err := strconv.Atoi(parentIdSegments[1])
-	if err != nil {
-		return false, err
-	}
-
-	return parentGroupId == parentId, nil
 }
 
 func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
