@@ -4,12 +4,75 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 )
+
+type KeysetPaginationOpts struct {
+	OrderBy string
+	Sort    string
+}
+
+func (c *GitlabClient) listWithKeysetPagination(
+	ctx context.Context,
+	baseEndpoint string,
+	nextLink string,
+	target interface{},
+	opts KeysetPaginationOpts,
+) (string, *v2.RateLimitDescription, error) {
+	endpointURL := baseEndpoint
+	if nextLink != "" {
+		nextURL, err := url.Parse(nextLink)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid pagination URL:  %w", err)
+		}
+		endpointURL = fmt.Sprintf("%s?%s", nextURL.Path, nextURL.RawQuery)
+	}
+
+	apiURL, err := url.Parse(endpointURL)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid endpoint URL: %w", err)
+	}
+
+	if nextLink == "" {
+		q := apiURL.Query()
+		q.Set("pagination", "keyset")
+		q.Set("order_by", opts.OrderBy)
+		q.Set("sort", opts.Sort)
+		q.Set("per_page", "100")
+		apiURL.RawQuery = q.Encode()
+	}
+
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), target, nil)
+	if err != nil {
+		return "", rateLimitDesc, err
+	}
+
+	newNextLink := parseNextLinkHeader(headers.Get("Link"))
+	return newNextLink, rateLimitDesc, nil
+}
+
+func parseNextLinkHeader(linkHeader string) string {
+	if linkHeader == "" {
+		return ""
+	}
+
+	links := strings.Split(linkHeader, ",")
+	for _, link := range links {
+		if strings.Contains(link, `rel="next"`) {
+			parts := strings.Split(link, ";")
+			if len(parts) > 0 {
+				return strings.Trim(strings.TrimSpace(parts[0]), "<>")
+			}
+		}
+	}
+
+	return ""
+}
 
 func WithOffsetPagination(url *url.URL, nextPageToken string) {
 	q := url.Query()

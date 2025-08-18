@@ -125,16 +125,26 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 	var users []*client.GroupMember
-	var err error
+
 	groupId, err := fromGroupResourceId(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
-	users, nextPageToken, rateLimitDesc, err := o.client.ListGroupMembers(ctx, groupId, pToken.Token)
+
+	users, nextPageToken, rateLimitDesc, err := o.client.ListAllGroupMembers(ctx, groupId, pToken.Token)
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
+
 	if err != nil {
+		if strings.Contains(err.Error(), "403 Forbidden") {
+			l := ctxzap.Extract(ctx)
+			l.Warn("Permission denied while listing members for group. Skipping.",
+				zap.String("group_id", resource.Id.Resource),
+			)
+			return nil, "", outputAnnotations, nil
+		}
+
 		return nil, "", outputAnnotations, err
 	}
 
