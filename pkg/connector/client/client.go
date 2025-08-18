@@ -141,6 +141,17 @@ func (c *GitlabClient) CreateUser(ctx context.Context, userRequest *CreateUserOp
 	return &user, rateLimitDesc, nil
 }
 
+func (c *GitlabClient) GetCurrentlyAuthenticatedUser(ctx context.Context) (*User, *v2.RateLimitDescription, error) {
+	var user User
+
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, "/api/v4/user", &user, nil)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &user, rateLimitDesc, nil
+}
+
 // DeleteUser deletes a user from GitLab.
 func (c *GitlabClient) DeleteUser(ctx context.Context, userID string) (*v2.RateLimitDescription, error) {
 	path := fmt.Sprintf("/api/v4/users/%s", PathEscape(userID))

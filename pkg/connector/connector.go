@@ -86,30 +86,41 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials.
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
+	var outputAnnotations = annotations.New()
 	if !d.client.IsOnPremise {
 		// Logic for GitLab Cloud.
 		if d.client.AccountCreationGroup != "" {
 			// If an account creation group is set, validate it exists and is unique.
 			groupName := d.client.AccountCreationGroup
-			_, _, err := d.client.FindGroupByName(ctx, groupName)
+			_, rateLimitDesc, err := d.client.FindGroupByName(ctx, groupName)
+			if rateLimitDesc != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDesc)
+			}
 			if err != nil {
-				return nil, fmt.Errorf("failed to validate account creation group: %w", err)
+				return outputAnnotations, fmt.Errorf("failed to validate account creation group: %w", err)
 			}
 		} else {
 			// If no account creation group is set, perform a general token validation.
-			_, _, _, err := d.client.ListGroups(ctx, "")
+			_, rateLimitDesc, err := d.client.GetCurrentlyAuthenticatedUser(ctx)
+			if rateLimitDesc != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDesc)
+			}
 			if err != nil {
-				return nil, fmt.Errorf("error validating token with ListGroups: %w", err)
+				return outputAnnotations, fmt.Errorf("error validating token with ListGroups: %w", err)
 			}
 		}
 	} else {
 		// For On-Premise, validate the token can list users (requires admin permissions).
-		_, _, _, err := d.client.ListUsers(ctx, "")
+		_, _, rateLimitDesc, err := d.client.ListUsers(ctx, "")
+		if rateLimitDesc != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDesc)
+		}
 		if err != nil {
-			return nil, fmt.Errorf("error validating token with ListUsers: %w", err)
+			return outputAnnotations, fmt.Errorf("error validating token with ListUsers: %w", err)
 		}
 	}
-	return nil, nil
+
+	return outputAnnotations, nil
 }
 
 // New returns a new instance of the connector.
