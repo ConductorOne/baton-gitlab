@@ -55,8 +55,9 @@ func (c *GitlabClient) listWithKeysetPagination(
 	if err != nil {
 		return "", rateLimitDesc, err
 	}
-
-	newNextLink := parseNextLinkHeader(headers.Get("Link"))
+	linkHeader := headers.Get("Link")
+	newNextLink := parseNextLinkHeader(linkHeader)
+	l.Info("gitlab-connector: listWithKeysetPagination", zap.Any("linkHeader", linkHeader), zap.Any("newNextLink", newNextLink))
 	return newNextLink, rateLimitDesc, nil
 }
 
