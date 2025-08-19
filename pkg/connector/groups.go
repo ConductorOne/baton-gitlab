@@ -139,16 +139,14 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	if err != nil {
-		if err != nil {
-			l := ctxzap.Extract(ctx)
-			l.Warn("Permission denied while listing members for group. Skipping.",
-				zap.String("group_id", resource.Id.Resource),
-			)
-			if status.Code(err) == codes.PermissionDenied || errors.Is(err, client.ErrForbidden) {
-				return nil, "", nil, nil
-			}
-			return nil, "", outputAnnotations, err
+		l := ctxzap.Extract(ctx)
+		l.Warn("Permission denied while listing members for group. Skipping.",
+			zap.String("group_id", resource.Id.Resource),
+		)
+		if status.Code(err) == codes.PermissionDenied || errors.Is(err, client.ErrForbidden) {
+			return nil, "", nil, nil
 		}
+		return nil, "", outputAnnotations, err
 	}
 
 	for _, user := range users {
