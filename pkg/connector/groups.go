@@ -264,8 +264,7 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 		profile["parent_group_id"] = group.ParentID
 	}
 
-	var annotations []proto.Message
-	annotations = []proto.Message{
+	annotations := []proto.Message{
 		&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
 	}
 
