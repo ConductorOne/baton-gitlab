@@ -67,7 +67,12 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 
 	outResources := make([]*v2.Resource, 0, len(projects))
 	for _, project := range projects {
-		resource, err := projectResource(project, parentResourceID, o.client.IsOnPremise)
+		parentGroup := getParentGroupFromNamespace(project.Namespace)
+		if parentGroup == nil {
+			parentGroup = parentResourceID
+		}
+
+		resource, err := projectResource(project, parentGroup, o.client.IsOnPremise)
 		if err != nil {
 			return nil, "", outputAnnotations, err
 		}

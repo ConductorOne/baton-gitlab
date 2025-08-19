@@ -93,6 +93,13 @@ func getParentGroup(parentGroupId int) *v2.ResourceId {
 	}
 }
 
+func getParentGroupFromNamespace(namespace *client.Namespace) *v2.ResourceId {
+	if namespace == nil {
+		return nil
+	}
+	return getParentGroup(namespace.Id)
+}
+
 func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	rv := make([]*v2.Entitlement, 0, len(groupAccessLevels))
 
@@ -277,9 +284,11 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 		profile["parent_group_id"] = group.ParentID
 	}
 
-	annos := []proto.Message{
-		&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+	annos := make([]proto.Message, 0)
+	if parentResourceID == nil {
+		annos = append(annos, &v2.ChildResourceType{ResourceTypeId: projectResourceType.Id})
 	}
+
 	// We get all members of subgroups so only need top level
 	if !isOnPremise && parentResourceID == nil {
 		annos = append(annos, &v2.ChildResourceType{ResourceTypeId: userResourceType.Id})

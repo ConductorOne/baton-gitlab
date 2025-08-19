@@ -14,6 +14,16 @@ import (
 	"go.uber.org/zap"
 )
 
+type ReqOpt func(reqURL *url.URL)
+
+func WithQueryParam(key string, value string) ReqOpt {
+	return func(reqURL *url.URL) {
+		q := reqURL.Query()
+		q.Set(key, value)
+		reqURL.RawQuery = q.Encode()
+	}
+}
+
 type KeysetPaginationOpts struct {
 	OrderBy string
 	Sort    string
@@ -25,6 +35,7 @@ func (c *GitlabClient) listWithKeysetPagination(
 	nextLink string,
 	target interface{},
 	opts KeysetPaginationOpts,
+	reqOpts ...ReqOpt,
 ) (string, *v2.RateLimitDescription, error) {
 	endpointURL := baseEndpoint
 	if nextLink != "" {
@@ -47,6 +58,10 @@ func (c *GitlabClient) listWithKeysetPagination(
 		q.Set("sort", opts.Sort)
 		q.Set("per_page", "100")
 		apiURL.RawQuery = q.Encode()
+	}
+
+	for _, o := range reqOpts {
+		o(apiURL)
 	}
 
 	l := ctxzap.Extract(ctx)

@@ -50,8 +50,6 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 }
 
 func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
-	l := ctxzap.Extract(ctx)
-	l.Info("gitlab-connector: do-request")
 	endpoint = fmt.Sprintf("%s%s", c.baseURL, endpoint)
 	relativeURL, err := url.Parse(endpoint)
 	if err != nil {
@@ -280,7 +278,8 @@ func (c *GitlabClient) ListProjects(ctx context.Context, groupID string, nextLin
 	endpoint := fmt.Sprintf("/api/v4/groups/%s/projects", PathEscape(groupID))
 	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
 
-	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, endpoint, nextLink, &projects, opts)
+	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, endpoint, nextLink, &projects, opts,
+		WithQueryParam("include_subgroups", "true"))
 	if err != nil {
 		return nil, "", rateLimitDesc, err
 	}
