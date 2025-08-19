@@ -122,7 +122,6 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 	}
 
 	for _, user := range users {
-
 		entitlementId := fmt.Sprintf("group:%s:%s", groupId.Resource, client.AccessLevelValue(user.AccessLevel).String())
 		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
 		if err != nil {
