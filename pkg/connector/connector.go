@@ -88,27 +88,35 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
 	var outputAnnotations = annotations.New()
 	if !d.client.IsOnPremise {
-		// Logic for GitLab Cloud.
-		if d.client.AccountCreationGroup != "" {
-			// If an account creation group is set, validate it exists and is unique.
-			groupName := d.client.AccountCreationGroup
-			_, rateLimitDesc, err := d.client.FindGroupByName(ctx, groupName)
-			if rateLimitDesc != nil {
-				outputAnnotations.WithRateLimiting(rateLimitDesc)
-			}
-			if err != nil {
-				return outputAnnotations, fmt.Errorf("failed to validate account creation group: %w", err)
-			}
-		} else {
-			// If no account creation group is set, perform a general token validation.
-			_, rateLimitDesc, err := d.client.GetCurrentlyAuthenticatedUser(ctx)
-			if rateLimitDesc != nil {
-				outputAnnotations.WithRateLimiting(rateLimitDesc)
-			}
-			if err != nil {
-				return outputAnnotations, fmt.Errorf("error validating token with GetCurrentlyAuthenticatedUser: %w", err)
-			}
+		// If no account creation group is set, perform a general token validation.
+		_, rateLimitDesc, err := d.client.GetCurrentlyAuthenticatedUser(ctx)
+		if rateLimitDesc != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDesc)
 		}
+		if err != nil {
+			return outputAnnotations, fmt.Errorf("error validating token with GetCurrentlyAuthenticatedUser: %w", err)
+		}
+		/*	// Logic for GitLab Cloud.
+			if d.client.AccountCreationGroup != "" {
+				// If an account creation group is set, validate it exists and is unique.
+				groupName := d.client.AccountCreationGroup
+				_, rateLimitDesc, err := d.client.FindGroupByName(ctx, groupName)
+				if rateLimitDesc != nil {
+					outputAnnotations.WithRateLimiting(rateLimitDesc)
+				}
+				if err != nil {
+					return outputAnnotations, fmt.Errorf("failed to validate account creation group: %w", err)
+				}
+			} else {
+				// If no account creation group is set, perform a general token validation.
+				_, rateLimitDesc, err := d.client.GetCurrentlyAuthenticatedUser(ctx)
+				if rateLimitDesc != nil {
+					outputAnnotations.WithRateLimiting(rateLimitDesc)
+				}
+				if err != nil {
+					return outputAnnotations, fmt.Errorf("error validating token with GetCurrentlyAuthenticatedUser: %w", err)
+				}
+			}*/
 	} else {
 		// For On-Premise, validate the token can list users (requires admin permissions).
 		_, _, rateLimitDesc, err := d.client.ListUsers(ctx, "")
