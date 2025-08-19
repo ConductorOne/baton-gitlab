@@ -110,6 +110,8 @@ func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ 
 }
 
 func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: list group grants")
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 	var users []*client.GroupMember

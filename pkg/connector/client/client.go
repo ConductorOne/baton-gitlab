@@ -50,6 +50,8 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 }
 
 func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: do-request")
 	endpoint = fmt.Sprintf("%s%s", c.baseURL, endpoint)
 	relativeURL, err := url.Parse(endpoint)
 	if err != nil {
@@ -103,6 +105,8 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 
 // ListUsers retrieves all users from GitLab API.
 func (c *GitlabClient) ListUsers(ctx context.Context, nextLink string) ([]*User, string, *v2.RateLimitDescription, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: list-users")
 	var users []*User
 	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
 
@@ -188,6 +192,8 @@ func (c *GitlabClient) ListAllGroupMembers(ctx context.Context, groupID string, 
 
 // ListGroupMembers retrieves members of a specific group.
 func (c *GitlabClient) ListGroupMembers(ctx context.Context, groupID string, nextPageToken string) ([]*GroupMember, string, *v2.RateLimitDescription, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: list-group-members")
 	var members []*GroupMember
 
 	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/members", PathEscape(groupID)))

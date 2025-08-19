@@ -14,6 +14,7 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -35,6 +36,8 @@ var projectAccessLevels = []client.AccessLevelValue{
 }
 
 func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: list projects")
 	if parentResourceID == nil {
 		return nil, "", nil, nil
 	}
@@ -74,7 +77,9 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 	return outResources, nextPageToken, outputAnnotations, nil
 }
 
-func (o *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+func (o *projectBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: list project entitlements")
 	rv := make([]*v2.Entitlement, 0, len(projectAccessLevels))
 
 	for _, level := range projectAccessLevels {
@@ -91,6 +96,8 @@ func (o *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 }
 
 func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	l.Info("gitlab-connector: list project grants")
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 
