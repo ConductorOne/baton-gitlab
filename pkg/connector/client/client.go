@@ -18,14 +18,15 @@ import (
 )
 
 type GitlabClient struct {
-	httpClient           *uhttp.BaseHttpClient
-	baseURL              string
-	AccountCreationGroup string
-	IsOnPremise          bool
-	accessToken          string
+	httpClient            *uhttp.BaseHttpClient
+	baseURL               string
+	AccountCreationGroup  string
+	IsOnPremise           bool
+	accessToken           string
+	SyncDirectMembersOnly bool
 }
 
-func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*GitlabClient, error) {
+func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string, syncDirectMembersOnly bool) (*GitlabClient, error) {
 	options := []uhttp.Option{uhttp.WithLogger(true, ctxzap.Extract(ctx)), uhttp.WithUserAgent("baton-gitlab/1.0")}
 
 	client, err := uhttp.NewClient(ctx, options...)
@@ -41,11 +42,12 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 	baseURLTrimmed := strings.TrimRight(baseURL, "/")
 
 	return &GitlabClient{
-		httpClient:           httpClient,
-		baseURL:              baseURLTrimmed,
-		AccountCreationGroup: accountCreationGroup,
-		IsOnPremise:          baseURLTrimmed != "https://gitlab.com",
-		accessToken:          accessToken,
+		httpClient:            httpClient,
+		baseURL:               baseURLTrimmed,
+		AccountCreationGroup:  accountCreationGroup,
+		IsOnPremise:           baseURLTrimmed != "https://gitlab.com",
+		accessToken:           accessToken,
+		SyncDirectMembersOnly: syncDirectMembersOnly,
 	}, nil
 }
 
@@ -274,7 +276,8 @@ func (c *GitlabClient) ListProjects(ctx context.Context, groupID string, nextLin
 	endpoint := fmt.Sprintf("/api/v4/groups/%s/projects", PathEscape(groupID))
 	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
 
-	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, endpoint, nextLink, &projects, opts)
+	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, endpoint, nextLink, &projects, opts,
+		WithQueryParam("include_subgroups", "true"))
 	if err != nil {
 		return nil, "", rateLimitDesc, err
 	}
@@ -297,6 +300,20 @@ func (c *GitlabClient) GetProject(ctx context.Context, projectID string) (*Proje
 
 // ListProjectMembers retrieves members of a specific project.
 func (c *GitlabClient) ListProjectMembers(ctx context.Context, projectID string, nextPageToken string) ([]*ProjectMember, string, *v2.RateLimitDescription, error) {
+	var members []*ProjectMember
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/projects/%s/members", PathEscape(projectID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &members, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return members, nextToken, rateLimitDesc, nil
+}
+
+func (c *GitlabClient) ListAllProjectMembers(ctx context.Context, projectID string, nextPageToken string) ([]*ProjectMember, string, *v2.RateLimitDescription, error) {
 	var members []*ProjectMember
 
 	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/projects/%s/members/all", PathEscape(projectID)))

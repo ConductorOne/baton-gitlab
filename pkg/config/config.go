@@ -25,6 +25,11 @@ var (
 		field.WithDescription("The group indicated will be used as a default group for the new users. Required for account creation capability in the Cloud Version."),
 		field.WithRequired(false),
 	)
+	SyncDirectMembersOnly = field.BoolField(
+		"sync-direct-members-only",
+		field.WithDisplayName("Sync direct members only"),
+		field.WithDescription("When enabled, only sync direct members of groups and projects. Inherited members from parent groups will be excluded from membership grants."),
+	)
 
 	// ConfigurationFields defines the external configuration required for the
 	// connector to run. Note: these fields can be marked as optional or
@@ -33,6 +38,7 @@ var (
 		AccessToken,
 		BaseURL,
 		AccountCreationGroup,
+		SyncDirectMembersOnly,
 	}
 
 	// FieldRelationships defines relationships between the fields listed in

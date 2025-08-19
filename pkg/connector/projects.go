@@ -64,7 +64,12 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 
 	outResources := make([]*v2.Resource, 0, len(projects))
 	for _, project := range projects {
-		resource, err := projectResource(project, parentResourceID, o.client.IsOnPremise)
+		parentGroup := getParentGroupFromNamespace(project.Namespace)
+		if parentGroup == nil {
+			parentGroup = parentResourceID
+		}
+
+		resource, err := projectResource(project, parentGroup, o.client.IsOnPremise)
 		if err != nil {
 			return nil, "", outputAnnotations, err
 		}
@@ -74,7 +79,7 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 	return outResources, nextPageToken, outputAnnotations, nil
 }
 
-func (o *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+func (o *projectBuilder) Entitlements(ctx context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	rv := make([]*v2.Entitlement, 0, len(projectAccessLevels))
 
 	for _, level := range projectAccessLevels {
@@ -96,7 +101,13 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 
 	var users []*client.ProjectMember
 	var err error
-	users, nextPageToken, rateLimitDesc, err := o.client.ListProjectMembers(ctx, resource.Id.Resource, pToken.Token)
+	var nextPageToken string
+	var rateLimitDesc *v2.RateLimitDescription
+	if o.client.SyncDirectMembersOnly {
+		users, nextPageToken, rateLimitDesc, err = o.client.ListProjectMembers(ctx, resource.Id.Resource, pToken.Token)
+	} else {
+		users, nextPageToken, rateLimitDesc, err = o.client.ListAllProjectMembers(ctx, resource.Id.Resource, pToken.Token)
+	}
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
@@ -119,7 +130,7 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		grantOptions := []grant.GrantOption{
 			grant.WithAnnotation(&v2.GrantExpandable{
 				EntitlementIds: []string{entitlementId},
-				Shallow:        true,
+				Shallow:        false,
 			}),
 		}
 
@@ -203,11 +214,6 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 
 func projectResource(project *client.Project, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
 	var annotations []proto.Message
-	if !isOnPremise {
-		annotations = []proto.Message{
-			&v2.ChildResourceType{ResourceTypeId: userResourceType.Id},
-		}
-	}
 
 	return resourceSdk.NewGroupResource(
 		project.NameWithNamespace,

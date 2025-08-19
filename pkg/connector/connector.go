@@ -88,6 +88,8 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
 	var outputAnnotations = annotations.New()
 	if !d.client.IsOnPremise {
+		// If no account creation group is set, perform a general token validation.
+
 		// Logic for GitLab Cloud.
 		if d.client.AccountCreationGroup != "" {
 			// If an account creation group is set, validate it exists and is unique.
@@ -124,10 +126,10 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Connector, error) {
+func New(ctx context.Context, accessToken string, baseURL string, accountCreationGroup string, syncDirectMembersOnly bool) (*Connector, error) {
 	l := ctxzap.Extract(ctx)
 
-	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup)
+	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup, syncDirectMembersOnly)
 	if err != nil {
 		l.Error("error creating gitlab client", zap.Error(err))
 		return nil, err

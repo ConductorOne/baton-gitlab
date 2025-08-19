@@ -113,7 +113,7 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 	case projectResourceType.Id:
 		var projectMembers []*client.ProjectMember
 		var rateLimitDescProjectMembers *v2.RateLimitDescription
-		projectMembers, nextPageToken, rateLimitDescProjectMembers, err = u.client.ListProjectMembers(ctx, parentResourceID.Resource, pToken.Token)
+		projectMembers, nextPageToken, rateLimitDescProjectMembers, err = u.client.ListAllProjectMembers(ctx, parentResourceID.Resource, pToken.Token)
 		if rateLimitDescProjectMembers != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDescProjectMembers)
 		}

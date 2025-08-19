@@ -25,11 +25,21 @@ type Group struct {
 	ParentID    int    `json:"parent_id"`
 }
 
+type Namespace struct {
+	Id       int    `json:"id"`
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Kind     string `json:"kind"`
+	FullPath string `json:"full_path"`
+	ParentId int    `json:"parent_id"`
+}
+
 type Project struct {
-	ID                int    `json:"id"`
-	Name              string `json:"name"`
-	Description       string `json:"description"`
-	NameWithNamespace string `json:"name_with_namespace"`
+	ID                int        `json:"id"`
+	Name              string     `json:"name"`
+	Description       string     `json:"description"`
+	NameWithNamespace string     `json:"name_with_namespace"`
+	Namespace         *Namespace `json:"namespace"`
 }
 
 type GroupMember struct {
@@ -50,7 +60,7 @@ type ProjectMember struct {
 	AvatarURL         string        `json:"avatar_url"`
 	WebURL            string        `json:"web_url"`
 	AccessLevel       int           `json:"access_level"`
-	ExpiresAt         *ISOTime    `json:"expires_at"`
+	ExpiresAt         *ISOTime      `json:"expires_at"`
 	GroupSAMLIdentity *SAMLIdentity `json:"group_saml_identity"`
 	Email             string        `json:"email"`
 }

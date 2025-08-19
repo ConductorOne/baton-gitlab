@@ -12,6 +12,16 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 )
 
+type ReqOpt func(reqURL *url.URL)
+
+func WithQueryParam(key string, value string) ReqOpt {
+	return func(reqURL *url.URL) {
+		q := reqURL.Query()
+		q.Set(key, value)
+		reqURL.RawQuery = q.Encode()
+	}
+}
+
 type KeysetPaginationOpts struct {
 	OrderBy string
 	Sort    string
@@ -23,6 +33,7 @@ func (c *GitlabClient) listWithKeysetPagination(
 	nextLink string,
 	target interface{},
 	opts KeysetPaginationOpts,
+	reqOpts ...ReqOpt,
 ) (string, *v2.RateLimitDescription, error) {
 	endpointURL := baseEndpoint
 	if nextLink != "" {
@@ -47,12 +58,17 @@ func (c *GitlabClient) listWithKeysetPagination(
 		apiURL.RawQuery = q.Encode()
 	}
 
+	for _, o := range reqOpts {
+		o(apiURL)
+	}
+
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), target, nil)
 	if err != nil {
 		return "", rateLimitDesc, err
 	}
+	linkHeader := headers.Get("Link")
+	newNextLink := parseNextLinkHeader(linkHeader)
 
-	newNextLink := parseNextLinkHeader(headers.Get("Link"))
 	return newNextLink, rateLimitDesc, nil
 }
 
