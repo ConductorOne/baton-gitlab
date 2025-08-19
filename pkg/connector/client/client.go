@@ -18,14 +18,15 @@ import (
 )
 
 type GitlabClient struct {
-	httpClient           *uhttp.BaseHttpClient
-	baseURL              string
-	AccountCreationGroup string
-	IsOnPremise          bool
-	accessToken          string
+	httpClient            *uhttp.BaseHttpClient
+	baseURL               string
+	AccountCreationGroup  string
+	IsOnPremise           bool
+	accessToken           string
+	SyncDirectMembersOnly bool
 }
 
-func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*GitlabClient, error) {
+func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string, syncDirectMembersOnly bool) (*GitlabClient, error) {
 	options := []uhttp.Option{uhttp.WithLogger(true, ctxzap.Extract(ctx)), uhttp.WithUserAgent("baton-gitlab/1.0")}
 
 	client, err := uhttp.NewClient(ctx, options...)
@@ -41,11 +42,12 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string)
 	baseURLTrimmed := strings.TrimRight(baseURL, "/")
 
 	return &GitlabClient{
-		httpClient:           httpClient,
-		baseURL:              baseURLTrimmed,
-		AccountCreationGroup: accountCreationGroup,
-		IsOnPremise:          baseURLTrimmed != "https://gitlab.com",
-		accessToken:          accessToken,
+		httpClient:            httpClient,
+		baseURL:               baseURLTrimmed,
+		AccountCreationGroup:  accountCreationGroup,
+		IsOnPremise:           baseURLTrimmed != "https://gitlab.com",
+		accessToken:           accessToken,
+		SyncDirectMembersOnly: syncDirectMembersOnly,
 	}, nil
 }
 
@@ -103,8 +105,6 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 
 // ListUsers retrieves all users from GitLab API.
 func (c *GitlabClient) ListUsers(ctx context.Context, nextLink string) ([]*User, string, *v2.RateLimitDescription, error) {
-	l := ctxzap.Extract(ctx)
-	l.Info("gitlab-connector: list-users")
 	var users []*User
 	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
 
@@ -190,8 +190,6 @@ func (c *GitlabClient) ListAllGroupMembers(ctx context.Context, groupID string, 
 
 // ListGroupMembers retrieves members of a specific group.
 func (c *GitlabClient) ListGroupMembers(ctx context.Context, groupID string, nextPageToken string) ([]*GroupMember, string, *v2.RateLimitDescription, error) {
-	l := ctxzap.Extract(ctx)
-	l.Info("gitlab-connector: list-group-members")
 	var members []*GroupMember
 
 	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/members", PathEscape(groupID)))

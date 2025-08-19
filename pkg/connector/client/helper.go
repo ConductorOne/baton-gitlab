@@ -10,8 +10,6 @@ import (
 	"time"
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
-	"go.uber.org/zap"
 )
 
 type ReqOpt func(reqURL *url.URL)
@@ -64,15 +62,13 @@ func (c *GitlabClient) listWithKeysetPagination(
 		o(apiURL)
 	}
 
-	l := ctxzap.Extract(ctx)
-	l.Info("listWithKeysetPagination", zap.Any("apiURL", apiURL.String()))
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), target, nil)
 	if err != nil {
 		return "", rateLimitDesc, err
 	}
 	linkHeader := headers.Get("Link")
 	newNextLink := parseNextLinkHeader(linkHeader)
-	l.Info("gitlab-connector: listWithKeysetPagination", zap.Any("linkHeader", linkHeader), zap.Any("newNextLink", newNextLink))
+
 	return newNextLink, rateLimitDesc, nil
 }
 

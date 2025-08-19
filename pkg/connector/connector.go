@@ -89,34 +89,28 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 	var outputAnnotations = annotations.New()
 	if !d.client.IsOnPremise {
 		// If no account creation group is set, perform a general token validation.
-		_, rateLimitDesc, err := d.client.GetCurrentlyAuthenticatedUser(ctx)
-		if rateLimitDesc != nil {
-			outputAnnotations.WithRateLimiting(rateLimitDesc)
+
+		// Logic for GitLab Cloud.
+		if d.client.AccountCreationGroup != "" {
+			// If an account creation group is set, validate it exists and is unique.
+			groupName := d.client.AccountCreationGroup
+			_, rateLimitDesc, err := d.client.FindGroupByName(ctx, groupName)
+			if rateLimitDesc != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDesc)
+			}
+			if err != nil {
+				return outputAnnotations, fmt.Errorf("failed to validate account creation group: %w", err)
+			}
+		} else {
+			// If no account creation group is set, perform a general token validation.
+			_, rateLimitDesc, err := d.client.GetCurrentlyAuthenticatedUser(ctx)
+			if rateLimitDesc != nil {
+				outputAnnotations.WithRateLimiting(rateLimitDesc)
+			}
+			if err != nil {
+				return outputAnnotations, fmt.Errorf("error validating token with GetCurrentlyAuthenticatedUser: %w", err)
+			}
 		}
-		if err != nil {
-			return outputAnnotations, fmt.Errorf("error validating token with GetCurrentlyAuthenticatedUser: %w", err)
-		}
-		/*	// Logic for GitLab Cloud.
-			if d.client.AccountCreationGroup != "" {
-				// If an account creation group is set, validate it exists and is unique.
-				groupName := d.client.AccountCreationGroup
-				_, rateLimitDesc, err := d.client.FindGroupByName(ctx, groupName)
-				if rateLimitDesc != nil {
-					outputAnnotations.WithRateLimiting(rateLimitDesc)
-				}
-				if err != nil {
-					return outputAnnotations, fmt.Errorf("failed to validate account creation group: %w", err)
-				}
-			} else {
-				// If no account creation group is set, perform a general token validation.
-				_, rateLimitDesc, err := d.client.GetCurrentlyAuthenticatedUser(ctx)
-				if rateLimitDesc != nil {
-					outputAnnotations.WithRateLimiting(rateLimitDesc)
-				}
-				if err != nil {
-					return outputAnnotations, fmt.Errorf("error validating token with GetCurrentlyAuthenticatedUser: %w", err)
-				}
-			}*/
 	} else {
 		// For On-Premise, validate the token can list users (requires admin permissions).
 		_, _, rateLimitDesc, err := d.client.ListUsers(ctx, "")
@@ -132,10 +126,10 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string) (*Connector, error) {
+func New(ctx context.Context, accessToken string, baseURL string, accountCreationGroup string, syncDirectMembersOnly bool) (*Connector, error) {
 	l := ctxzap.Extract(ctx)
 
-	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup)
+	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup, syncDirectMembersOnly)
 	if err != nil {
 		l.Error("error creating gitlab client", zap.Error(err))
 		return nil, err

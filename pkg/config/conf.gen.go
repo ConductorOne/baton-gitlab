@@ -7,6 +7,7 @@ type Gitlab struct {
 	AccessToken string `mapstructure:"access-token"`
 	BaseUrl string `mapstructure:"base-url"`
 	AccountCreationGroup string `mapstructure:"account-creation-group"`
+	SyncDirectMembersOnly bool `mapstructure:"sync-direct-members-only"`
 }
 
 func (c* Gitlab) findFieldByTag(tagValue string) (any, bool) {
