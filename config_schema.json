@@ -78,6 +78,12 @@
       "description": "Disable OpenTelemetry tracing",
       "isOps": true,
       "boolField": {}
+    },
+    {
+      "name": "sync-direct-members-only",
+      "displayName": "Sync direct members only",
+      "description": "When enabled, only sync direct members of groups and projects. Inherited members from parent groups will be excluded from membership grants.",
+      "boolField": {}
     }
   ],
   "displayName": "GitLab",
