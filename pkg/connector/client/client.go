@@ -304,6 +304,20 @@ func (c *GitlabClient) GetProject(ctx context.Context, projectID string) (*Proje
 func (c *GitlabClient) ListProjectMembers(ctx context.Context, projectID string, nextPageToken string) ([]*ProjectMember, string, *v2.RateLimitDescription, error) {
 	var members []*ProjectMember
 
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/projects/%s/members", PathEscape(projectID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &members, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	nextToken := headers.Get("X-Next-Page")
+	return members, nextToken, rateLimitDesc, nil
+}
+
+func (c *GitlabClient) ListAllProjectMembers(ctx context.Context, projectID string, nextPageToken string) ([]*ProjectMember, string, *v2.RateLimitDescription, error) {
+	var members []*ProjectMember
+
 	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/projects/%s/members/all", PathEscape(projectID)))
 	WithOffsetPagination(apiURL, nextPageToken)
 	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &members, nil)
