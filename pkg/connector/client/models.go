@@ -5,12 +5,14 @@ import (
 )
 
 type User struct {
-	ID             int      `json:"id"`
-	Email          string   `json:"email"`
-	Username       string   `json:"username"`
-	Name           string   `json:"name"`
-	State          string   `json:"state"`
-	LastActivityOn *ISOTime `json:"last_activity_on"`
+	ID              int      `json:"id"`
+	Email           string   `json:"email"`
+	Username        string   `json:"username"`
+	Name            string   `json:"name"`
+	State           string   `json:"state"`
+	LastActivityOn  *ISOTime `json:"last_activity_on"`
+	MembershipState string   `json:"membership_state"`
+	Locked          bool     `json:"locked"`
 }
 
 type PendingInviteUser struct {
@@ -18,11 +20,14 @@ type PendingInviteUser struct {
 }
 
 type Group struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	FullName    string `json:"full_name"`
-	ParentID    int    `json:"parent_id"`
+	ID                int      `json:"id"`
+	Name              string   `json:"name"`
+	Description       string   `json:"description"`
+	FullName          string   `json:"full_name"`
+	ParentID          int      `json:"parent_id"`
+	Archived          bool     `json:"archived"`
+	Visibility        string   `json:"visibility"`
+	MarkedForDeletion *ISOTime `json:"marked_for_deletion"`
 }
 
 type Namespace struct {
@@ -50,6 +55,8 @@ type GroupMember struct {
 	State             string        `json:"state"`
 	AccessLevel       int           `json:"access_level"`
 	GroupSAMLIdentity *SAMLIdentity `json:"group_saml_identity"`
+	MembershipState   string        `json:"membership_state"`
+	Locked            bool          `json:"locked"`
 }
 
 type ProjectMember struct {
