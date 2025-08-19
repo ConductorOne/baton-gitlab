@@ -102,18 +102,16 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 }
 
 // ListUsers retrieves all users from GitLab API.
-func (c *GitlabClient) ListUsers(ctx context.Context, nextPageToken string) ([]*User, string, *v2.RateLimitDescription, error) {
+func (c *GitlabClient) ListUsers(ctx context.Context, nextLink string) ([]*User, string, *v2.RateLimitDescription, error) {
 	var users []*User
+	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
 
-	apiURL, _ := url.Parse("/api/v4/users")
-	WithOffsetPagination(apiURL, nextPageToken)
-	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &users, nil)
+	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, "/api/v4/users", nextLink, &users, opts)
 	if err != nil {
 		return nil, "", rateLimitDesc, err
 	}
 
-	nextToken := headers.Get("X-Next-Page")
-	return users, nextToken, rateLimitDesc, nil
+	return users, newNextLink, rateLimitDesc, nil
 }
 
 // CreateUser creates a new user in GitLab.
@@ -147,21 +145,17 @@ func (c *GitlabClient) DeleteUser(ctx context.Context, userID string) (*v2.RateL
 	return rateLimitDesc, err
 }
 
-// ListGroups retrieves all groups from GitLab API.
-func (c *GitlabClient) ListGroups(ctx context.Context, nextPageToken string) ([]*Group, string, *v2.RateLimitDescription, error) {
+// ListGroups retrieves all groups from GitLab API using keyset pagination.
+func (c *GitlabClient) ListGroups(ctx context.Context, nextLink string) ([]*Group, string, *v2.RateLimitDescription, error) {
 	var groups []*Group
+	opts := KeysetPaginationOpts{OrderBy: "name", Sort: "asc"}
 
-	apiURL, _ := url.Parse("/api/v4/groups")
-	query := apiURL.Query()
-	apiURL.RawQuery = query.Encode()
-	WithOffsetPagination(apiURL, nextPageToken)
-	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &groups, nil)
+	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, "/api/v4/groups", nextLink, &groups, opts)
 	if err != nil {
 		return nil, "", rateLimitDesc, err
 	}
 
-	nextToken := headers.Get("X-Next-Page")
-	return groups, nextToken, rateLimitDesc, nil
+	return groups, newNextLink, rateLimitDesc, nil
 }
 
 // GetGroup retrieves a specific group by ID.
@@ -275,18 +269,17 @@ func (c *GitlabClient) ListPendingGroupInvitations(ctx context.Context, groupID 
 }
 
 // ListProjects retrieves all projects from GitLab API.
-func (c *GitlabClient) ListProjects(ctx context.Context, groupID string, nextPageToken string) ([]*Project, string, *v2.RateLimitDescription, error) {
+func (c *GitlabClient) ListProjects(ctx context.Context, groupID string, nextLink string) ([]*Project, string, *v2.RateLimitDescription, error) {
 	var projects []*Project
+	endpoint := fmt.Sprintf("/api/v4/groups/%s/projects", PathEscape(groupID))
+	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
 
-	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/projects", PathEscape(groupID)))
-	WithOffsetPagination(apiURL, nextPageToken)
-	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &projects, nil)
+	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, endpoint, nextLink, &projects, opts)
 	if err != nil {
 		return nil, "", rateLimitDesc, err
 	}
 
-	nextToken := headers.Get("X-Next-Page")
-	return projects, nextToken, rateLimitDesc, nil
+	return projects, newNextLink, rateLimitDesc, nil
 }
 
 // GetProject retrieves a specific project by ID.

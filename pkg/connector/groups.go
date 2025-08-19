@@ -17,6 +17,8 @@ import (
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -125,16 +127,25 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 	var users []*client.GroupMember
-	var err error
+
 	groupId, err := fromGroupResourceId(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
 	}
+
 	users, nextPageToken, rateLimitDesc, err := o.client.ListGroupMembers(ctx, groupId, pToken.Token)
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
+
 	if err != nil {
+		l := ctxzap.Extract(ctx)
+		l.Warn("Permission denied while listing members for group. Skipping.",
+			zap.String("group_id", resource.Id.Resource),
+		)
+		if status.Code(err) == codes.PermissionDenied || errors.Is(err, client.ErrForbidden) {
+			return nil, "", nil, nil
+		}
 		return nil, "", outputAnnotations, err
 	}
 
