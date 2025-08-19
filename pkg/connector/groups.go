@@ -277,8 +277,12 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 		profile["parent_group_id"] = group.ParentID
 	}
 
-	annotations := []proto.Message{
+	annos := []proto.Message{
 		&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
+	}
+	// We get all members of subgroups so only need top level
+	if !isOnPremise && parentResourceID == nil {
+		annos = append(annos, &v2.ChildResourceType{ResourceTypeId: userResourceType.Id})
 	}
 
 	return resourceSdk.NewGroupResource(
@@ -288,7 +292,7 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 		[]resourceSdk.GroupTraitOption{
 			resourceSdk.WithGroupProfile(profile),
 		},
-		resourceSdk.WithAnnotation(annotations...),
+		resourceSdk.WithAnnotation(annos...),
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)
 }
