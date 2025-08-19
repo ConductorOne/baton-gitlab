@@ -129,6 +129,11 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 
+	if pToken.Token == "" {
+		l := ctxzap.Extract(ctx)
+		l.Info("gitlab-connector", zap.Any("groupMemberCount", len(users)))
+	}
+
 	if err != nil {
 		l := ctxzap.Extract(ctx)
 		l.Warn("Permission denied while listing members for group. Skipping.",
