@@ -268,9 +268,6 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 	annotations = []proto.Message{
 		&v2.ChildResourceType{ResourceTypeId: projectResourceType.Id},
 	}
-	if !isOnPremise {
-		annotations = append(annotations, &v2.ChildResourceType{ResourceTypeId: userResourceType.Id})
-	}
 
 	return resourceSdk.NewGroupResource(
 		group.FullName,
