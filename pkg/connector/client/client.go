@@ -277,7 +277,9 @@ func (c *GitlabClient) ListProjects(ctx context.Context, groupID string, nextLin
 	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
 
 	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, endpoint, nextLink, &projects, opts,
-		WithQueryParam("include_subgroups", "true"))
+		WithQueryParam("include_subgroups", "true"),
+		WithQueryParam("simple", "true"),
+	)
 	if err != nil {
 		return nil, "", rateLimitDesc, err
 	}
