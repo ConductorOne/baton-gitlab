@@ -15,6 +15,10 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/crypto"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -105,6 +109,13 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 			outputAnnotations.WithRateLimiting(rateLimitDescGroupMembers)
 		}
 		if err != nil {
+			if status.Code(err) == codes.PermissionDenied || errors.Is(err, client.ErrForbidden) {
+				l := ctxzap.Extract(ctx)
+				l.Warn("Permission denied while listing members for a group during user sync. Skipping.",
+					zap.String("group_id", groupId),
+				)
+				return nil, "", outputAnnotations, nil
+			}
 			return nil, "", outputAnnotations, err
 		}
 		for _, member := range groupMembers {
