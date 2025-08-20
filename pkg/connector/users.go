@@ -15,10 +15,6 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/crypto"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -109,15 +105,15 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 			outputAnnotations.WithRateLimiting(rateLimitDescGroupMembers)
 		}
 		if err != nil {
-			if status.Code(err) == codes.PermissionDenied || errors.Is(err, client.ErrForbidden) {
-				l := ctxzap.Extract(ctx)
-				l.Warn("Permission denied while listing members for a group during user sync. Skipping.",
-					zap.String("group_id", groupId),
-				)
+			isPermissionError, unhandledErr := handlePermissionError(ctx, err, "group", groupId)
+			if unhandledErr != nil {
+				return nil, "", outputAnnotations, unhandledErr
+			}
+			if isPermissionError {
 				return nil, "", outputAnnotations, nil
 			}
-			return nil, "", outputAnnotations, err
 		}
+
 		for _, member := range groupMembers {
 			users = append(users, member)
 		}
@@ -128,8 +124,15 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		if rateLimitDescProjectMembers != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDescProjectMembers)
 		}
+
 		if err != nil {
-			return nil, "", outputAnnotations, err
+			isPermissionError, unhandledErr := handlePermissionError(ctx, err, "project", parentResourceID.Resource)
+			if unhandledErr != nil {
+				return nil, "", outputAnnotations, unhandledErr
+			}
+			if isPermissionError {
+				return nil, "", outputAnnotations, nil
+			}
 		}
 		for _, member := range projectMembers {
 			users = append(users, member)
