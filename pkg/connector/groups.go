@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/conductorone/baton-gitlab/pkg/connector/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -272,7 +273,14 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 		"name":        group.Name,
 		"full_name":   group.FullName,
 		"description": group.Description,
+		"archived":    group.Archived,
+		"visibility":  group.Visibility,
 	}
+
+	if group.MarkedForDeletion != nil && !time.Time(*group.MarkedForDeletion).IsZero() {
+		profile["marked_for_deletion"] = time.Time(*group.MarkedForDeletion)
+	}
+
 	if group.ParentID != 0 {
 		profile["parent_group_id"] = group.ParentID
 	}
