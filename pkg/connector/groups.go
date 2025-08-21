@@ -23,6 +23,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const projectsCountProfileKey = "projects_count"
+const groupMembersCountProfileKey = "group_members_count"
+const descendantGroupsCountProfileKey = "descendant_groups_count"
+
 type groupBuilder struct {
 	client *client.GitlabClient
 }
@@ -61,12 +65,31 @@ func (o *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 	if err != nil {
 		return nil, "", outputAnnotations, err
 	}
+	groupIds := make([]string, 0)
+	for _, g := range groups {
+		gId := gitlabFullGroupID(g.ID)
+		groupIds = append(groupIds, gId)
+	}
+
+	groupsWithCounts, rateLimitDesc, err := o.client.ListGroupsWithCounts(ctx, groupIds)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
+	if err != nil {
+		return nil, "", outputAnnotations, err
+	}
+
+	groupCountMap := make(map[string]*client.GroupWithCount)
+	for _, gc := range groupsWithCounts {
+		groupCountMap[gc.Id] = &gc
+	}
 
 	outResources := make([]*v2.Resource, 0, len(groups))
 	for _, group := range groups {
 		parentResourceID = getParentGroup(group.ParentID)
-
-		resource, err := groupResource(group, parentResourceID, o.client.IsOnPremise)
+		fullGroupID := gitlabFullGroupID(group.ID)
+		groupCounts := groupCountMap[fullGroupID]
+		resource, err := groupResource(ctx, group, parentResourceID, o.client.IsOnPremise, groupCounts)
 		if err != nil {
 			return nil, "", outputAnnotations, err
 		}
@@ -116,6 +139,16 @@ func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ 
 }
 
 func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	groupTrait, err := resourceSdk.GetGroupTrait(resource)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("okta-connectorv2: failed to get group trait: %w", err)
+	}
+	groupMembersCount, ok := resourceSdk.GetProfileInt64Value(groupTrait.Profile, groupMembersCountProfileKey)
+
+	if ok && groupMembersCount == 0 {
+		return nil, "", nil, nil
+	}
+
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 	var users []*client.GroupMember
@@ -270,7 +303,7 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	return outputAnnotations, nil
 }
 
-func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
+func groupResource(ctx context.Context, group *client.Group, parentResourceID *v2.ResourceId, isOnPremise bool, groupCounts *client.GroupWithCount) (*v2.Resource, error) {
 	profile := map[string]interface{}{
 		"id":          group.ID,
 		"name":        group.Name,
@@ -288,8 +321,16 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 		profile["parent_group_id"] = group.ParentID
 	}
 
+	hasProjects := true
+	if groupCounts != nil {
+		hasProjects = groupCounts.ProjectsCount > 0
+		profile["projects_count"] = groupCounts.ProjectsCount
+		profile["group_members_count"] = groupCounts.GroupMembersCount
+		profile["descendant_groups_count"] = groupCounts.DescendantGroupsCount
+	}
+
 	annos := make([]proto.Message, 0)
-	if parentResourceID == nil {
+	if parentResourceID == nil && hasProjects {
 		annos = append(annos, &v2.ChildResourceType{ResourceTypeId: projectResourceType.Id})
 	}
 

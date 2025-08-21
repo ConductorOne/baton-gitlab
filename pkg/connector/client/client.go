@@ -17,6 +17,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const graphQLApiPath = "https://gitlab.com/api/graphql"
+
+const groupCountQuery = `query GetGroupsWithMemberCount($groupIds: [ID!]!) {
+  groups(ids: $groupIds) {
+    nodes {
+      id
+      groupMembersCount
+      descendantGroupsCount
+      projectsCount
+    }
+  }
+}`
+
 type GitlabClient struct {
 	httpClient            *uhttp.BaseHttpClient
 	baseURL               string
@@ -158,6 +171,51 @@ func (c *GitlabClient) ListGroups(ctx context.Context, nextLink string) ([]*Grou
 	}
 
 	return groups, newNextLink, rateLimitDesc, nil
+}
+
+func (c *GitlabClient) ListGroupsWithCounts(ctx context.Context, groupIds []string) ([]GroupWithCount, *v2.RateLimitDescription, error) {
+	variables := map[string]interface{}{
+		"groupIds": groupIds,
+	}
+
+	payload := map[string]interface{}{
+		"query":     groupCountQuery,
+		"variables": variables,
+	}
+
+	options := []uhttp.RequestOption{
+		uhttp.WithAcceptJSONHeader(),
+		uhttp.WithJSONBody(payload),
+		uhttp.WithBearerToken(c.accessToken),
+	}
+
+	graphQLURL, err := url.Parse(graphQLApiPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("gitlab-connector: failed to parse graphql url: %w", err)
+	}
+
+	var rateLimitData v2.RateLimitDescription
+	var errorResponse GitlabError
+	res := &GroupCountsListResponse{}
+	doOptions := []uhttp.DoOption{
+		uhttp.WithRatelimitData(&rateLimitData),
+		uhttp.WithErrorResponse(&errorResponse),
+		uhttp.WithJSONResponse(&res),
+	}
+
+	req, err := c.httpClient.NewRequest(ctx, http.MethodPost, graphQLURL, options...)
+	if err != nil {
+		return nil, &rateLimitData, err
+	}
+	resp, err := c.httpClient.Do(
+		req,
+		doOptions...,
+	)
+	if err != nil {
+		return nil, &rateLimitData, fmt.Errorf("gitlab-connector: failed to list group with counts: %w", err)
+	}
+	defer resp.Body.Close()
+	return res.Data.Groups.Nodes, &rateLimitData, nil
 }
 
 // GetGroup retrieves a specific group by ID.

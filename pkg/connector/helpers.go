@@ -32,3 +32,7 @@ func parseAccessLevelFromEntitlementID(entitlementID string) (int, error) {
 	}
 	return int(levelValue), nil
 }
+
+func gitlabFullGroupID(groupId int) string {
+	return fmt.Sprintf("gid://gitlab/Group/%d", groupId)
+}

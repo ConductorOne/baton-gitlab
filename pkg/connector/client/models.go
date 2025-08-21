@@ -103,6 +103,21 @@ type AddProjectMemberRequest struct {
 	AccessLevel AccessLevelValue `json:"access_level"`
 }
 
+type GroupWithCount struct {
+	Id                    string `json:"id"`
+	GroupMembersCount     int    `json:"groupMembersCount"`
+	DescendantGroupsCount int    `json:"descendantGroupsCount"`
+	ProjectsCount         int    `json:"projectsCount"`
+}
+
+type GroupCountsListResponse struct {
+	Data struct {
+		Groups struct {
+			Nodes []GroupWithCount `json:"nodes"`
+		} `json:"groups"`
+	} `json:"data"`
+}
+
 type ISOTime time.Time
 
 // ISO 8601 date format.
