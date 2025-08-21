@@ -391,6 +391,8 @@ func userResource(user any) (*v2.Resource, error) {
 	var name string
 	var state string
 	var accessLevel int
+	var membershipState string
+	var locked *bool
 	// NOTE: The last login attribute is only visible in the DC version (on-premise/self-hosted). To get this attribute you need admin permissions and in the cloud version it does not exist.
 	// https://docs.gitlab.com/api/users/
 	var lastLogin time.Time
@@ -403,6 +405,9 @@ func userResource(user any) (*v2.Resource, error) {
 		name = user.Name
 		username = user.Username
 		accessLevel = user.AccessLevel
+		membershipState = user.MembershipState
+		lockedVal := user.Locked
+		locked = &lockedVal
 	case *client.ProjectMember:
 		id = user.ID
 		email = user.Email
@@ -452,12 +457,16 @@ func userResource(user any) (*v2.Resource, error) {
 	}
 
 	profile := map[string]interface{}{
-		"first_name":   name,
-		"username":     username,
-		"email":        email,
-		"state":        state,
-		"access_level": accessLevel,
-		"id":           id,
+		"first_name":       name,
+		"username":         username,
+		"email":            email,
+		"state":            state,
+		"access_level":     accessLevel,
+		"id":               id,
+		"membership_state": membershipState,
+	}
+	if locked != nil {
+		profile["locked"] = *locked
 	}
 
 	userTraitOptions := []resourceSdk.UserTraitOption{
