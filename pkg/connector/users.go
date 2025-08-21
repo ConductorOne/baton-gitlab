@@ -124,16 +124,10 @@ func (u *userBuilder) listCloudVersion(ctx context.Context, parentResourceID *v2
 		if rateLimitDescProjectMembers != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDescProjectMembers)
 		}
-
 		if err != nil {
-			isPermissionError, unhandledErr := handlePermissionError(ctx, err, "project", parentResourceID.Resource)
-			if unhandledErr != nil {
-				return nil, "", outputAnnotations, unhandledErr
-			}
-			if isPermissionError {
-				return nil, "", outputAnnotations, nil
-			}
+			return nil, "", outputAnnotations, err
 		}
+
 		for _, member := range projectMembers {
 			users = append(users, member)
 		}

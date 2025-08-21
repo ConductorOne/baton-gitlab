@@ -111,15 +111,8 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
-
 	if err != nil {
-		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "project", resource.Id.Resource)
-		if unhandledErr != nil {
-			return nil, "", outputAnnotations, unhandledErr
-		}
-		if isPermissionError {
-			return nil, "", outputAnnotations, nil
-		}
+		return nil, "", outputAnnotations, err
 	}
 
 	groupId := resource.ParentResourceId
