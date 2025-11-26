@@ -173,7 +173,7 @@ func (c *GitlabClient) GetGroup(ctx context.Context, groupID string) (*Group, *v
 	return &group, rateLimitDesc, nil
 }
 
-// ListAllGroupMembers retrieves members and pending invites of a specific group.
+// ListAllGroupMembers retrieves members and pending invites of a specific group including inherited members through ancestor groups.
 func (c *GitlabClient) ListAllGroupMembers(ctx context.Context, groupID string, nextPageToken string) ([]*GroupMember, string, *v2.RateLimitDescription, error) {
 	var members []*GroupMember
 
