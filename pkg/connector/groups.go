@@ -119,6 +119,11 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	var users []*client.GroupMember
 	var err error
 
+	var pageToken string
+	if pToken != nil {
+		pageToken = pToken.Token
+	}
+
 	groupId, err := fromGroupResourceId(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
@@ -127,9 +132,9 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	var nextPageToken string
 	var rateLimitDesc *v2.RateLimitDescription
 	if o.client.SyncDirectMembersOnly {
-		users, nextPageToken, rateLimitDesc, err = o.client.ListGroupMembers(ctx, groupId, pToken.Token)
+		users, nextPageToken, rateLimitDesc, err = o.client.ListGroupMembers(ctx, groupId, pageToken)
 	} else {
-		users, nextPageToken, rateLimitDesc, err = o.client.ListAllGroupMembers(ctx, groupId, pToken.Token)
+		users, nextPageToken, rateLimitDesc, err = o.client.ListAllGroupMembers(ctx, groupId, pageToken)
 	}
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
