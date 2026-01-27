@@ -300,7 +300,7 @@ func getCredentialOption(credentialOptions *v2.CredentialOptions) (string, bool,
 	}
 
 	length := min(8, credentialOptions.GetRandomPassword().GetLength())
-	plaintextPassword, err := crypto.GenerateRandomPassword(&v2.CredentialOptions_RandomPassword{
+	plaintextPassword, err := crypto.GenerateRandomPassword(&v2.LocalCredentialOptions_RandomPassword{
 		Length: length,
 	})
 	if err != nil {
