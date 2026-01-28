@@ -13,12 +13,12 @@ import (
 	"go.uber.org/zap"
 )
 
-type Connector struct {
+type Gitlab struct {
 	client *client.GitlabClient
 }
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
-func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
+func (d *Gitlab) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
 	return []connectorbuilder.ResourceSyncer{
 		newUserBuilder(d.client),
 		newGroupBuilder(d.client),
@@ -28,12 +28,12 @@ func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.Reso
 
 // Asset takes an input AssetRef and attempts to fetch it using the connector's authenticated http client
 // It streams a response, always starting with a metadata object, following by chunked payloads for the asset.
-func (d *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.ReadCloser, error) {
+func (d *Gitlab) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.ReadCloser, error) {
 	return "", nil, nil
 }
 
 // Metadata returns metadata about the connector.
-func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
+func (d *Gitlab) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
 	return &v2.ConnectorMetadata{
 		DisplayName: "GitLab",
 		Description: "GitLab is a web-based Git repository manager with built-in CI/CD pipeline functionality.",
@@ -85,7 +85,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 }
 
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials.
-func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
+func (d *Gitlab) Validate(ctx context.Context) (annotations.Annotations, error) {
 	var outputAnnotations = annotations.New()
 	if !d.client.IsOnPremise {
 		// If no account creation group is set, perform a general token validation.
@@ -126,7 +126,7 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, accessToken string, baseURL string, accountCreationGroup string, syncDirectMembersOnly bool) (*Connector, error) {
+func New(ctx context.Context, accessToken string, baseURL string, accountCreationGroup string, syncDirectMembersOnly bool) (*Gitlab, error) {
 	l := ctxzap.Extract(ctx)
 
 	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup, syncDirectMembersOnly)
@@ -135,7 +135,7 @@ func New(ctx context.Context, accessToken string, baseURL string, accountCreatio
 		return nil, err
 	}
 
-	return &Connector{
+	return &Gitlab{
 		client: gitlabClient,
 	}, nil
 }
