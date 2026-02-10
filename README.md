@@ -1,6 +1,6 @@
 ![Baton Logo](./baton-logo.png)
 
-# `baton-gitlab` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-gitlab.svg)](https://pkg.go.dev/github.com/conductorone/baton-gitlab) ![main ci](https://github.com/conductorone/baton-gitlab/actions/workflows/main.yaml/badge.svg)
+# `baton-gitlab` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-gitlab.svg)](https://pkg.go.dev/github.com/conductorone/baton-gitlab) ![ci](https://github.com/conductorone/baton-gitlab/actions/workflows/ci.yaml/badge.svg)
 
 `baton-gitlab` is a connector for  [GitLab](https://gitlab.com/) built using the [Baton SDK](https://github.com/conductorone/baton-sdk).
 
