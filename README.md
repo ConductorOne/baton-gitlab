@@ -18,7 +18,7 @@ To use this connector, you will need different things depending on which version
 
 - DC version (on-premise/self-hosted): you need an API key with the api scope enabled, which is indicated by the `--access-token` flag and a base url with the `--base-url` flag.
   For connecting to https://example.local you should do:
-```
+```bash
             baton-gitlab --access-token abcdefghij1234567890 --base-url https://example.local
 ```
 
