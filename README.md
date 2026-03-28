@@ -10,16 +10,16 @@ Check out [Baton](https://github.com/conductorone/baton) to learn more the proje
 
 To use this connector, you will need different things depending on which version you want to use (DC-SaaS):
 
-- DC version (on-premise/self-hosted): you need an API key with the api scope enabled, which is indicated by the `--access-token` flag and a base url with the `--base-url` flag.
-  For connecting to https://example.local you should do:
-```
-            baton-gitlab --access-token abcdefghij1234567890 --base-url https://example.local
-```
-
 - SaaS version (Cloud): you need an API key with the api scope enabled, which is indicated by the `--access-token` flag and a group already created in gitlab for account creation and synchronization with the `--account-creation-group` flag.
   For connecting to https://gitlab.com you should do:
 ```
             baton-gitlab --access-token abcdefghij1234567890 --account-creation-group example-group
+```
+
+- DC version (on-premise/self-hosted): you need an API key with the api scope enabled, which is indicated by the `--access-token` flag and a base url with the `--base-url` flag.
+  For connecting to https://example.local you should do:
+```bash
+            baton-gitlab --access-token abcdefghij1234567890 --base-url https://example.local
 ```
 
 ## Connector capabilities
