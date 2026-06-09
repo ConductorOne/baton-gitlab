@@ -71,7 +71,7 @@ Make a note of the group name.
 If you do not have any groups, follow the prompts to create a new group, and make a note of the name you choose.
 
 
-**That's it!** Next, move on to the connector configuration instructions. 
+**Done.** Next, move on to the connector configuration instructions. 
 
 ## Configure the GitLab connector
 
@@ -130,11 +130,11 @@ The connector's label changes to **Syncing**, followed by **Connected**. You can
 </Step>
 </Steps>
 
-**That's it!** Your GitLab connector is now pulling access data into C1.
+**Done.** Your GitLab connector is now pulling access data into C1.
 </Tab>
 
 <Tab title="Self-hosted">
-**Follow these instructions to use the GitLab](https://gitlab.com/ConductorOne/baton-gitlab) connector, hosted and run in your own environment.** 
+**Follow these instructions to use the GitLab](https://gitlab.com/C1/baton-gitlab) connector, hosted and run in your own environment.** 
 
 When running in service mode on Kubernetes, a self-hosted connector maintains an ongoing connection with C1, automatically syncing and uploading data at regular intervals. This data is immediately available in the C1 UI for access reviews and access requests.
 
@@ -234,7 +234,7 @@ spec:
     spec:
       containers:
       - name: baton-gitlab
-        image: ghcr.io/conductorone/baton-gitlab:latest
+        image: public.ecr.aws/conductorone/baton-gitlab:latest
         imagePullPolicy: IfNotPresent
         env:
         - name: BATON_HOST_ID
@@ -255,7 +255,7 @@ Check that the connector data uploaded correctly. In C1, click **Apps**. On the 
 </Step>
 </Steps>
 
-**That's it!** Your GitLab connector is now pulling access data into C1.
+**Done.** Your GitLab connector is now pulling access data into C1.
 </Tab>
 </Tabs>
 
