@@ -81,12 +81,12 @@ func (o *serviceAccountBuilder) Grants(_ context.Context, _ *v2.Resource, _ *pag
 
 func serviceAccountResource(account *client.ServiceAccount, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	profile := map[string]interface{}{
-		"id":       account.ID,
-		"username": account.Username,
-		"name":     account.Name,
+		"id":          account.ID,
+		fieldUsername: account.Username,
+		fieldName:     account.Name,
 	}
 	if account.Email != "" {
-		profile["email"] = account.Email
+		profile[fieldEmail] = account.Email
 	}
 
 	traitOpts := []resourceSdk.UserTraitOption{

@@ -159,7 +159,7 @@ func (u *userBuilder) CreateAccountCapabilityDetails(_ context.Context) (*v2.Cre
 func (u *userBuilder) CreateAccount(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
-	credentialOptions *v2.CredentialOptions,
+	credentialOptions *v2.LocalCredentialOptions,
 ) (
 	connectorbuilder.CreateAccountResponse,
 	[]*v2.PlaintextData,
@@ -175,7 +175,7 @@ func (u *userBuilder) CreateAccount(
 func (u *userBuilder) createOnPremUser(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
-	credentialOptions *v2.CredentialOptions,
+	credentialOptions *v2.LocalCredentialOptions,
 ) (
 	connectorbuilder.CreateAccountResponse,
 	[]*v2.PlaintextData,
@@ -217,7 +217,7 @@ func (u *userBuilder) createCloudUser(
 	groupName := u.client.AccountCreationGroup
 	profile := accountInfo.GetProfile().AsMap()
 
-	email, ok := profile["email"].(string)
+	email, ok := profile[fieldEmail].(string)
 	if !ok || email == "" {
 		return nil, nil, nil, fmt.Errorf("missing required field: email")
 	}
@@ -290,7 +290,7 @@ func (u *userBuilder) createCloudUser(
 	}, nil, nil, nil
 }
 
-func getCredentialOption(credentialOptions *v2.CredentialOptions) (string, bool, error) {
+func getCredentialOption(credentialOptions *v2.LocalCredentialOptions) (string, bool, error) {
 	if credentialOptions.GetNoPassword() != nil {
 		return "", false, nil
 	}
@@ -314,20 +314,20 @@ func ToPtr[T any](v T) *T {
 	return &v
 }
 
-func (u *userBuilder) getCreateUserOptions(accountInfo *v2.AccountInfo, credentialOptions *v2.CredentialOptions) (*client.CreateUserOptions, string, error) {
+func (u *userBuilder) getCreateUserOptions(accountInfo *v2.AccountInfo, credentialOptions *v2.LocalCredentialOptions) (*client.CreateUserOptions, string, error) {
 	pMap := accountInfo.Profile.AsMap()
 
-	email, ok := pMap["email"].(string)
+	email, ok := pMap[fieldEmail].(string)
 	if !ok || email == "" {
 		return nil, "", fmt.Errorf("email is required")
 	}
 
-	username, ok := pMap["username"].(string)
+	username, ok := pMap[fieldUsername].(string)
 	if !ok || username == "" {
 		return nil, "", fmt.Errorf("username is required")
 	}
 
-	name, ok := pMap["name"].(string)
+	name, ok := pMap[fieldName].(string)
 	if !ok || name == "" {
 		return nil, "", fmt.Errorf("name is required")
 	}
@@ -437,7 +437,7 @@ func userResource(user any) (*v2.Resource, error) {
 		name := pendingInvitationUser + strings.ToLower(email)
 
 		profile := map[string]interface{}{
-			"email": email,
+			fieldEmail: email,
 		}
 
 		return resourceSdk.NewUserResource(
@@ -466,8 +466,8 @@ func userResource(user any) (*v2.Resource, error) {
 
 	profile := map[string]interface{}{
 		"first_name":       name,
-		"username":         username,
-		"email":            email,
+		fieldUsername:      username,
+		fieldEmail:         email,
 		"state":            state,
 		"access_level":     accessLevel,
 		"id":               id,

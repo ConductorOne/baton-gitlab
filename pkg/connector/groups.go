@@ -222,7 +222,7 @@ func (o *groupBuilder) Grant(
 				break
 			}
 		}
-		l.Info("baton-gitlab grant: inviting user to group", zap.String("email", userEmail))
+		l.Info("baton-gitlab grant: inviting user to group", zap.String(fieldEmail, userEmail))
 		rateLimitDesc, err := o.client.InviteGroupMember(ctx, groupId, userEmail, client.AccessLevelValue(accessLevelValue))
 		if rateLimitDesc != nil {
 			outputAnnotations.WithRateLimiting(rateLimitDesc)
@@ -282,7 +282,7 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
 	profile := map[string]interface{}{
 		"id":          group.ID,
-		"name":        group.Name,
+		fieldName:     group.Name,
 		"full_name":   group.FullName,
 		"description": group.Description,
 		"archived":    group.Archived,

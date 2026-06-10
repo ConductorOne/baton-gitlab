@@ -22,6 +22,9 @@ func WithQueryParam(key string, value string) ReqOpt {
 	}
 }
 
+// sortAsc is the ascending keyset-pagination sort direction.
+const sortAsc = "asc"
+
 type KeysetPaginationOpts struct {
 	OrderBy string
 	Sort    string
