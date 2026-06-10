@@ -305,6 +305,9 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 	// We get all members of subgroups so only need top level
 	if !isOnPremise && parentResourceID == nil {
 		annos = append(annos, &v2.ChildResourceType{ResourceTypeId: userResourceType.Id})
+		// On GitLab.com service accounts are owned by top-level groups; the
+		// instance-wide endpoint is unavailable, so fan out per top-level group.
+		annos = append(annos, &v2.ChildResourceType{ResourceTypeId: serviceAccountResourceType.Id})
 	}
 
 	return resourceSdk.NewGroupResource(
