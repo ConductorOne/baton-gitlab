@@ -50,3 +50,21 @@ var deployTokenResourceType = &v2.ResourceType{
 	Traits:      []v2.ResourceType_Trait{v2.ResourceType_TRAIT_SECRET},
 	Annotations: annotations.New(&v2.SkipEntitlementsAndGrants{}),
 }
+
+// projectAccessTokenResourceType is a GitLab project access token: an opaque
+// static credential backed by a per-project bot user (NHI kind K1, STATIC_SECRET).
+var projectAccessTokenResourceType = &v2.ResourceType{
+	Id:          "project_access_token",
+	DisplayName: "Project Access Token",
+	Traits:      []v2.ResourceType_Trait{v2.ResourceType_TRAIT_SECRET},
+	Annotations: annotations.New(&v2.SkipEntitlementsAndGrants{}),
+}
+
+// groupAccessTokenResourceType is a GitLab group access token: an opaque static
+// credential backed by a per-group bot user (NHI kind K1, STATIC_SECRET).
+var groupAccessTokenResourceType = &v2.ResourceType{
+	Id:          "group_access_token",
+	DisplayName: "Group Access Token",
+	Traits:      []v2.ResourceType_Trait{v2.ResourceType_TRAIT_SECRET},
+	Annotations: annotations.New(&v2.SkipEntitlementsAndGrants{}),
+}

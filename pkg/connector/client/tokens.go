@@ -75,3 +75,37 @@ func (c *GitlabClient) ListGroupServiceAccounts(ctx context.Context, groupID str
 
 	return accounts, headers.Get("X-Next-Page"), rateLimitDesc, nil
 }
+
+// ListProjectAccessTokens lists access token metadata for a single project.
+// Each token is backed by a per-project bot user. The token value is never
+// returned by the list endpoint.
+// https://docs.gitlab.com/api/project_access_tokens/#list-all-project-access-tokens
+func (c *GitlabClient) ListProjectAccessTokens(ctx context.Context, projectID string, nextPageToken string) ([]*AccessToken, string, *v2.RateLimitDescription, error) {
+	var tokens []*AccessToken
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/projects/%s/access_tokens", PathEscape(projectID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &tokens, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	return tokens, headers.Get("X-Next-Page"), rateLimitDesc, nil
+}
+
+// ListGroupAccessTokens lists access token metadata for a single group. Each
+// token is backed by a per-group bot user. The token value is never returned by
+// the list endpoint.
+// https://docs.gitlab.com/api/group_access_tokens/#list-all-group-access-tokens
+func (c *GitlabClient) ListGroupAccessTokens(ctx context.Context, groupID string, nextPageToken string) ([]*AccessToken, string, *v2.RateLimitDescription, error) {
+	var tokens []*AccessToken
+
+	apiURL, _ := url.Parse(fmt.Sprintf("/api/v4/groups/%s/access_tokens", PathEscape(groupID)))
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &tokens, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	return tokens, headers.Get("X-Next-Page"), rateLimitDesc, nil
+}

@@ -213,7 +213,9 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 }
 
 func projectResource(project *client.Project, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
-	var annotations []proto.Message
+	annotations := []proto.Message{
+		&v2.ChildResourceType{ResourceTypeId: projectAccessTokenResourceType.Id},
+	}
 
 	return resourceSdk.NewGroupResource(
 		project.NameWithNamespace,
