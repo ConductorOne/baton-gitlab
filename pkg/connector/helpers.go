@@ -44,10 +44,16 @@ func handlePermissionError(ctx context.Context, err error, resourceType, resourc
 		return false, nil
 	}
 
-	if status.Code(err) == codes.PermissionDenied || errors.Is(err, client.ErrForbidden) {
+	// Some GitLab endpoints (group/project access tokens, service accounts)
+	// return 401 rather than 403 when the token lacks the required role on a
+	// specific resource. The token itself is valid (Validate already exercised
+	// it), so treat both as "skip this resource" rather than failing the sync.
+	code := status.Code(err)
+	if code == codes.PermissionDenied || code == codes.Unauthenticated ||
+		errors.Is(err, client.ErrForbidden) || errors.Is(err, client.ErrUnauthorized) {
 		l := ctxzap.Extract(ctx)
 		l.Warn(
-			fmt.Sprintf("Permission denied while listing members for %s. Skipping.", resourceType),
+			fmt.Sprintf("Permission denied while listing %s. Skipping.", resourceType),
 			zap.String(fmt.Sprintf("%s_id", resourceType), resourceId),
 		)
 		return true, nil
