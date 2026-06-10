@@ -298,6 +298,8 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 	}
 
 	annos := make([]proto.Message, 0)
+	// Group access tokens exist on every group, including subgroups.
+	annos = append(annos, &v2.ChildResourceType{ResourceTypeId: groupAccessTokenResourceType.Id})
 	if parentResourceID == nil {
 		annos = append(annos, &v2.ChildResourceType{ResourceTypeId: projectResourceType.Id})
 	}

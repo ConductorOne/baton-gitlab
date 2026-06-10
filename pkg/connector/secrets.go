@@ -12,8 +12,10 @@ import (
 // <platform>.<object>.<purpose>). These refine, but do not replace, the
 // indexed credential_type spine value.
 const (
-	subtypePAT    = "gitlab.token.pat"
-	subtypeDeploy = "gitlab.token.deploy"
+	subtypePAT           = "gitlab.token.pat"
+	subtypeDeploy        = "gitlab.token.deploy"
+	subtypeProjectAccess = "gitlab.token.project_access"
+	subtypeGroupAccess   = "gitlab.token.group_access"
 )
 
 // newStaticSecretResource builds a TRAIT_SECRET resource carrying a SecretTrait
