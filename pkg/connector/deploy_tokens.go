@@ -34,7 +34,15 @@ func (o *deployTokenBuilder) List(ctx context.Context, _ *v2.ResourceId, pToken 
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		return nil, "", outputAnnotations, fmt.Errorf("failed to list deploy tokens: %w", err)
+		// The instance deploy-token endpoint requires an admin token; a
+		// non-admin token gets 403. Skip rather than failing the whole sync.
+		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "deploy_token", "")
+		if unhandledErr != nil {
+			return nil, "", outputAnnotations, fmt.Errorf("failed to list deploy tokens: %w", unhandledErr)
+		}
+		if isPermissionError {
+			return nil, "", outputAnnotations, nil
+		}
 	}
 
 	resources := make([]*v2.Resource, 0, len(tokens))

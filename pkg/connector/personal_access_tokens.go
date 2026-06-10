@@ -35,7 +35,15 @@ func (o *personalAccessTokenBuilder) List(ctx context.Context, _ *v2.ResourceId,
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		return nil, "", outputAnnotations, fmt.Errorf("failed to list personal access tokens: %w", err)
+		// Listing every instance PAT requires an admin token; a non-admin token
+		// gets 403. Skip rather than failing the whole sync.
+		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "personal_access_token", "")
+		if unhandledErr != nil {
+			return nil, "", outputAnnotations, fmt.Errorf("failed to list personal access tokens: %w", unhandledErr)
+		}
+		if isPermissionError {
+			return nil, "", outputAnnotations, nil
+		}
 	}
 
 	resources := make([]*v2.Resource, 0, len(tokens))

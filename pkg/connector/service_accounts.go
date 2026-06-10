@@ -56,7 +56,16 @@ func (o *serviceAccountBuilder) List(ctx context.Context, parentResourceID *v2.R
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		return nil, "", outputAnnotations, fmt.Errorf("failed to list service accounts: %w", err)
+		// The instance and group service-account endpoints require elevated
+		// permissions (admin / group owner); a token without them gets 403.
+		// Skip rather than failing the whole sync.
+		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "service_account", "")
+		if unhandledErr != nil {
+			return nil, "", outputAnnotations, fmt.Errorf("failed to list service accounts: %w", unhandledErr)
+		}
+		if isPermissionError {
+			return nil, "", outputAnnotations, nil
+		}
 	}
 
 	resources := make([]*v2.Resource, 0, len(accounts))
