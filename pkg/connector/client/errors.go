@@ -18,6 +18,7 @@ import (
 
 var ErrNotFound = errors.New("404 Not Found")
 var ErrForbidden = errors.New("403 Forbidden")
+var ErrUnauthorized = errors.New("401 Unauthorized")
 
 type ErrorResponse struct {
 	Body     []byte
@@ -29,14 +30,13 @@ type GitlabError struct {
 	Detail string `json:"message"`
 }
 
-
 // Message implements the uhttp.ErrorResponse interface.
 func (e *GitlabError) Message() string {
 	if e.Detail != "" {
 		return e.Detail
 	}
 	return "Unknown error from Gitlab API"
-} 
+}
 
 func (e *ErrorResponse) Error() string {
 	path, _ := url.QueryUnescape(e.Response.Request.URL.Path)
@@ -58,6 +58,8 @@ func CheckResponse(r *http.Response) error {
 		return ErrNotFound
 	case http.StatusForbidden:
 		return ErrForbidden
+	case http.StatusUnauthorized:
+		return ErrUnauthorized
 	}
 
 	errorResponse := &ErrorResponse{Response: r}

@@ -23,6 +23,9 @@ func (d *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.Reso
 		newUserBuilder(d.client),
 		newGroupBuilder(d.client),
 		newProjectBuilder(d.client),
+		newServiceAccountBuilder(d.client),
+		newPersonalAccessTokenBuilder(d.client),
+		newDeployTokenBuilder(d.client),
 	}
 }
 
@@ -39,7 +42,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 		Description: "GitLab is a web-based Git repository manager with built-in CI/CD pipeline functionality.",
 		AccountCreationSchema: &v2.ConnectorAccountCreationSchema{
 			FieldMap: map[string]*v2.ConnectorAccountCreationSchema_Field{
-				"name": {
+				fieldName: {
 					DisplayName: "Name",
 					Required:    true,
 					Description: "This name will be used for the user.",
@@ -49,7 +52,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 					Placeholder: "Name",
 					Order:       1,
 				},
-				"email": {
+				fieldEmail: {
 					DisplayName: "Email",
 					Required:    true,
 					Description: "This email will be used as the login for the user.",
@@ -59,7 +62,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 					Placeholder: "Email",
 					Order:       2,
 				},
-				"username": {
+				fieldUsername: {
 					DisplayName: "Username",
 					Required:    true,
 					Description: "This username will be used for the user.",

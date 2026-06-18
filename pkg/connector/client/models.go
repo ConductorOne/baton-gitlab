@@ -107,3 +107,59 @@ type ISOTime time.Time
 
 // ISO 8601 date format.
 const iso8601 = "2006-01-02"
+
+// ServiceAccount is a GitLab service account user, returned by the instance
+// (GET /service_accounts) and group (GET /groups/:id/service_accounts) endpoints.
+// https://docs.gitlab.com/api/users/#list-service-account-users
+type ServiceAccount struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+}
+
+// PersonalAccessToken is GitLab PAT metadata. The token value itself is never
+// returned by the list endpoint, only by rotation.
+// https://docs.gitlab.com/api/personal_access_tokens/
+type PersonalAccessToken struct {
+	ID         int        `json:"id"`
+	Name       string     `json:"name"`
+	UserID     int        `json:"user_id"`
+	Scopes     []string   `json:"scopes"`
+	Active     bool       `json:"active"`
+	Revoked    bool       `json:"revoked"`
+	CreatedAt  *time.Time `json:"created_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	ExpiresAt  *ISOTime   `json:"expires_at"`
+}
+
+// DeployToken is GitLab deploy token metadata (instance/project/group scoped).
+// Deploy tokens are not tied to a user. The secret is only returned on creation.
+// https://docs.gitlab.com/api/deploy_tokens/
+type DeployToken struct {
+	ID        int        `json:"id"`
+	Name      string     `json:"name"`
+	Username  string     `json:"username"`
+	Scopes    []string   `json:"scopes"`
+	Revoked   bool       `json:"revoked"`
+	Expired   bool       `json:"expired"`
+	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+// AccessToken is the shared shape of GitLab project and group access tokens.
+// Each is backed by a per-resource bot user (UserID); the secret is only
+// returned on creation/rotation.
+// https://docs.gitlab.com/api/project_access_tokens/
+// https://docs.gitlab.com/api/group_access_tokens/
+type AccessToken struct {
+	ID          int        `json:"id"`
+	UserID      int        `json:"user_id"`
+	Name        string     `json:"name"`
+	Scopes      []string   `json:"scopes"`
+	Active      bool       `json:"active"`
+	Revoked     bool       `json:"revoked"`
+	AccessLevel int        `json:"access_level"`
+	CreatedAt   *time.Time `json:"created_at"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	ExpiresAt   *ISOTime   `json:"expires_at"`
+}

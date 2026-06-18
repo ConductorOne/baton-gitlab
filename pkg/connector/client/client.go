@@ -106,7 +106,7 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 // ListUsers retrieves all users from GitLab API.
 func (c *GitlabClient) ListUsers(ctx context.Context, nextLink string) ([]*User, string, *v2.RateLimitDescription, error) {
 	var users []*User
-	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
+	opts := KeysetPaginationOpts{OrderBy: "id", Sort: sortAsc}
 
 	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, "/api/v4/users", nextLink, &users, opts)
 	if err != nil {
@@ -150,7 +150,7 @@ func (c *GitlabClient) DeleteUser(ctx context.Context, userID string) (*v2.RateL
 // ListGroups retrieves all groups from GitLab API using keyset pagination.
 func (c *GitlabClient) ListGroups(ctx context.Context, nextLink string) ([]*Group, string, *v2.RateLimitDescription, error) {
 	var groups []*Group
-	opts := KeysetPaginationOpts{OrderBy: "name", Sort: "asc"}
+	opts := KeysetPaginationOpts{OrderBy: "name", Sort: sortAsc}
 
 	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, "/api/v4/groups", nextLink, &groups, opts)
 	if err != nil {
@@ -274,7 +274,7 @@ func (c *GitlabClient) ListPendingGroupInvitations(ctx context.Context, groupID 
 func (c *GitlabClient) ListProjects(ctx context.Context, groupID string, nextLink string) ([]*Project, string, *v2.RateLimitDescription, error) {
 	var projects []*Project
 	endpoint := fmt.Sprintf("/api/v4/groups/%s/projects", PathEscape(groupID))
-	opts := KeysetPaginationOpts{OrderBy: "id", Sort: "asc"}
+	opts := KeysetPaginationOpts{OrderBy: "id", Sort: sortAsc}
 
 	newNextLink, rateLimitDesc, err := c.listWithKeysetPagination(ctx, endpoint, nextLink, &projects, opts,
 		WithQueryParam("include_subgroups", "true"),

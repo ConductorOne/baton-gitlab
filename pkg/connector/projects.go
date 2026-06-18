@@ -223,7 +223,7 @@ func projectResource(project *client.Project, parentResourceID *v2.ResourceId, i
 			resourceSdk.WithGroupProfile(
 				map[string]interface{}{
 					"id":          project.ID,
-					"name":        project.Name,
+					fieldName:     project.Name,
 					"description": project.Description,
 				},
 			),
