@@ -21,6 +21,16 @@ While developing the connector, please fill out this form. This information is n
   members are not re-shared onward — so `effective-member` deliberately excludes
   them. Parent/top-level inheritance is fully transitive in both cases.
 
+  Known limitation: on the invited (shared) group path, expanded members are
+  shown at the share's `group_access_level`, which is an upper bound. GitLab caps
+  a shared member's effective access at `min(role in the invited group,
+  group_access_level)`, so a member whose role in the invited group is below the
+  share level may be shown one level higher on the shared path. This is a
+  consequence of expressing the path via expansion (`GrantExpandable` copies
+  principals without recomputing per-member levels). The direct and
+  parent/top-level inheritance paths preserve exact access levels; only the
+  invited-group path uses the share level.
+
 - Supports Account provisioning:
   When you creating and new account, the following fields are required:
     - Name: The name of the user.
