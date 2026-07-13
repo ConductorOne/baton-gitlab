@@ -77,7 +77,7 @@ func parentGroupInheritanceGrants(target *v2.Resource, parentGroup *v2.ResourceI
 // principal on the target's access-level entitlement, expandable to the invited
 // group's membership. expansionSlug picks which membership entitlement to expand
 // into (group→group = member/direct, group→project = effective-member); see
-// docs/docs-info.md for the sharing-semantics rationale.
+// docs/doc-info.md for the sharing-semantics rationale.
 func sharedGroupGrants(target *v2.Resource, shared []client.SharedGroup, expansionSlug string) []*v2.Grant {
 	grants := make([]*v2.Grant, 0, len(shared))
 	for _, sg := range shared {
@@ -109,7 +109,7 @@ func sharedGroupGrants(target *v2.Resource, shared []client.SharedGroup, expansi
 // effectiveMemberChainGrants composes a group's effective-member entitlement
 // (direct + ancestor-inherited members) purely via expansion — no extra API call.
 // It excludes the group's own inbound shares because group→project sharing is
-// non-transitive. See docs/docs-info.md for the semantics.
+// non-transitive. See docs/doc-info.md for the semantics.
 func effectiveMemberChainGrants(group *v2.Resource, parentGroup *v2.ResourceId) []*v2.Grant {
 	expandable := func(srcEntitlementID string) grant.GrantOption {
 		return grant.WithAnnotation(&v2.GrantExpandable{

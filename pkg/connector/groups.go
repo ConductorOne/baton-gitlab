@@ -42,7 +42,7 @@ const groupMemberEntitlement = "member"
 
 // groupEffectiveMemberEntitlement is the expansion-only entitlement for a group's
 // EFFECTIVE membership (direct + inherited), the group→project sharing target.
-// Not grantable; Grant is rejected. See docs/docs-info.md.
+// Not grantable; Grant is rejected. See docs/doc-info.md.
 const groupEffectiveMemberEntitlement = "effective-member"
 
 // groupMemberEntitlementID returns a group's member entitlement ID (e.g. "group:g/28:member").
