@@ -217,7 +217,7 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 			// Permission error: skip invited-group grants and continue.
 		} else {
 			// Inbound shares (group→group): expand to the invited group's direct members.
-			outGrants = append(outGrants, sharedGroupGrants(resource, group.SharedWithGroups, groupMemberEntitlement)...)
+			outGrants = append(outGrants, sharedGroupGrants(ctx, resource, group.SharedWithGroups, groupMemberEntitlement)...)
 		}
 	}
 
@@ -275,7 +275,7 @@ func (o *groupBuilder) Grant(
 
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
-		l.Warn("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
+		l.Debug("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
 		ut, err := resourceSdk.GetUserTrait(principal)
 		if err != nil {
 			return nil, fmt.Errorf("baton-gitlab: error getting user trait: %w", err)

@@ -151,7 +151,7 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 			// Permission error: skip invited-group grants and continue.
 		} else {
 			// Invited groups (group→project): expand to effective membership.
-			outGrants = append(outGrants, sharedGroupGrants(resource, project.SharedWithGroups, groupEffectiveMemberEntitlement)...)
+			outGrants = append(outGrants, sharedGroupGrants(ctx, resource, project.SharedWithGroups, groupEffectiveMemberEntitlement)...)
 		}
 	}
 

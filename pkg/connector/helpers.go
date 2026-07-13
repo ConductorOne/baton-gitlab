@@ -78,7 +78,13 @@ func parentGroupInheritanceGrants(target *v2.Resource, parentGroup *v2.ResourceI
 // group's membership. expansionSlug picks which membership entitlement to expand
 // into (group→group = member/direct, group→project = effective-member); see
 // docs/doc-info.md for the sharing-semantics rationale.
-func sharedGroupGrants(target *v2.Resource, shared []client.SharedGroup, expansionSlug string) []*v2.Grant {
+//
+// Unlike parent inheritance (which excludes Minimal because it confers no child
+// access), a share carries whatever group_access_level GitLab reports, so the
+// full Minimal..Owner range is accepted here — both groups and projects expose a
+// Minimal access-level entitlement, so the grant still resolves.
+func sharedGroupGrants(ctx context.Context, target *v2.Resource, shared []client.SharedGroup, expansionSlug string) []*v2.Grant {
+	l := ctxzap.Extract(ctx)
 	grants := make([]*v2.Grant, 0, len(shared))
 	for _, sg := range shared {
 		level := client.AccessLevelValue(sg.GroupAccessLevel)
@@ -86,6 +92,11 @@ func sharedGroupGrants(target *v2.Resource, shared []client.SharedGroup, expansi
 		// Skip levels with no matching entitlement (only Minimal..Owner exist),
 		// which would otherwise orphan the grant.
 		if levelName == "" || level < client.MinimalAccessPermissions || level > client.OwnerPermissions {
+			l.Debug("baton-gitlab: skipping shared group with unsupported access level",
+				zap.String("target", target.Id.Resource),
+				zap.Int("shared_group_id", sg.GroupID),
+				zap.Int("group_access_level", sg.GroupAccessLevel),
+			)
 			continue
 		}
 
@@ -148,7 +159,7 @@ func handlePermissionError(ctx context.Context, err error, resourceType, resourc
 
 	if status.Code(err) == codes.PermissionDenied || errors.Is(err, client.ErrForbidden) {
 		l := ctxzap.Extract(ctx)
-		l.Warn(
+		l.Debug(
 			fmt.Sprintf("Permission denied while listing members for %s. Skipping.", resourceType),
 			zap.String(fmt.Sprintf("%s_id", resourceType), resourceId),
 		)
