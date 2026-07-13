@@ -28,7 +28,7 @@ var (
 	SyncDirectMembersOnly = field.BoolField(
 		"sync-direct-members-only",
 		field.WithDisplayName("Sync direct members only"),
-		field.WithDescription("When enabled, only sync direct members of groups and projects. Inherited members from parent groups will be excluded from membership grants."),
+		field.WithDescription("When enabled, only direct members of groups and projects are synced. Access inherited from parent groups or granted via invited (shared) groups is excluded."),
 	)
 
 	// ConfigurationFields defines the external configuration required for the

@@ -20,14 +20,26 @@ type PendingInviteUser struct {
 }
 
 type Group struct {
-	ID                int      `json:"id"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description"`
-	FullName          string   `json:"full_name"`
-	ParentID          int      `json:"parent_id"`
-	Archived          bool     `json:"archived"`
-	Visibility        string   `json:"visibility"`
-	MarkedForDeletion *ISOTime `json:"marked_for_deletion"`
+	ID                int           `json:"id"`
+	Name              string        `json:"name"`
+	Description       string        `json:"description"`
+	FullName          string        `json:"full_name"`
+	ParentID          int           `json:"parent_id"`
+	Archived          bool          `json:"archived"`
+	Visibility        string        `json:"visibility"`
+	MarkedForDeletion *ISOTime      `json:"marked_for_deletion"`
+	SharedWithGroups  []SharedGroup `json:"shared_with_groups"`
+}
+
+// SharedGroup represents a group that has been invited (shared) into another
+// group or project, granting its members access at group_access_level.
+// Returned by GET /groups/:id and GET /projects/:id (not by the list endpoints).
+type SharedGroup struct {
+	GroupID          int      `json:"group_id"`
+	GroupName        string   `json:"group_name"`
+	GroupFullPath    string   `json:"group_full_path"`
+	GroupAccessLevel int      `json:"group_access_level"`
+	ExpiresAt        *ISOTime `json:"expires_at"`
 }
 
 type Namespace struct {
@@ -40,11 +52,12 @@ type Namespace struct {
 }
 
 type Project struct {
-	ID                int        `json:"id"`
-	Name              string     `json:"name"`
-	Description       string     `json:"description"`
-	NameWithNamespace string     `json:"name_with_namespace"`
-	Namespace         *Namespace `json:"namespace"`
+	ID                int           `json:"id"`
+	Name              string        `json:"name"`
+	Description       string        `json:"description"`
+	NameWithNamespace string        `json:"name_with_namespace"`
+	Namespace         *Namespace    `json:"namespace"`
+	SharedWithGroups  []SharedGroup `json:"shared_with_groups"`
 }
 
 type GroupMember struct {

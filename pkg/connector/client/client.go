@@ -53,7 +53,7 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string,
 	}, nil
 }
 
-func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
+func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target any, body any) (*http.Header, *v2.RateLimitDescription, error) {
 	endpoint = fmt.Sprintf("%s%s", c.baseURL, endpoint)
 	relativeURL, err := url.Parse(endpoint)
 	if err != nil {

@@ -3,6 +3,24 @@ While developing the connector, please fill out this form. This information is n
 ## Connector capabilities
 - Sync Users, projects and groups.
 
+- Labels grants by access path: memberships are surfaced as distinct, reviewable
+  paths — direct membership, inheritance from a parent/top-level group, and
+  access through an invited (shared) group — instead of a flattened effective
+  list. Indirect paths are expressed via expandable grants (group-as-principal
+  pointing at a group's membership entitlement). The `--sync-direct-members-only`
+  flag restricts syncing to direct memberships only.
+
+  Invited (shared) group resolution follows GitLab's own sharing semantics,
+  which differ by target: a group shared into another **group** grants access
+  only to the invited group's *direct* members, so that path expands to the
+  invited group's `member` entitlement; a group shared into a **project** grants
+  access to the invited group's *direct and inherited* members, so that path
+  expands to the invited group's `effective-member` entitlement (composed from
+  the group's direct members plus its ancestor-inherited members via expansion,
+  no extra API calls). Sharing is non-transitive — a group's own inbound (shared)
+  members are not re-shared onward — so `effective-member` deliberately excludes
+  them. Parent/top-level inheritance is fully transitive in both cases.
+
 - Supports Account provisioning:
   When you creating and new account, the following fields are required:
     - Name: The name of the user.

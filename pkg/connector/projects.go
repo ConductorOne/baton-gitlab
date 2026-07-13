@@ -69,7 +69,7 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 			parentGroup = parentResourceID
 		}
 
-		resource, err := projectResource(project, parentGroup, o.client.IsOnPremise)
+		resource, err := projectResource(project, parentGroup)
 		if err != nil {
 			return nil, "", outputAnnotations, err
 		}
@@ -95,57 +95,64 @@ func (o *projectBuilder) Entitlements(ctx context.Context, resource *v2.Resource
 	return rv, "", nil, nil
 }
 
+// Grants emits direct members and, unless SyncDirectMembersOnly is set, the
+// indirect access paths (parent inheritance and invited groups) as expandable
+// grants so each path stays distinct in C1.
 func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 
-	var users []*client.ProjectMember
-	var err error
-	var nextPageToken string
-	var rateLimitDesc *v2.RateLimitDescription
-	if o.client.SyncDirectMembersOnly {
-		users, nextPageToken, rateLimitDesc, err = o.client.ListProjectMembers(ctx, resource.Id.Resource, pToken.Token)
-	} else {
-		users, nextPageToken, rateLimitDesc, err = o.client.ListAllProjectMembers(ctx, resource.Id.Resource, pToken.Token)
+	var pageToken string
+	if pToken != nil {
+		pageToken = pToken.Token
 	}
+
+	users, nextPageToken, rateLimitDesc, err := o.client.ListProjectMembers(ctx, resource.Id.Resource, pageToken)
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		return nil, "", outputAnnotations, err
-	}
-
-	groupId := resource.ParentResourceId
-	if groupId == nil {
-		return nil, "", outputAnnotations, fmt.Errorf("project resource has no parent group")
+		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "project", resource.Id.Resource)
+		if unhandledErr != nil {
+			return nil, "", outputAnnotations, unhandledErr
+		}
+		if isPermissionError {
+			return nil, "", outputAnnotations, nil
+		}
 	}
 
 	for _, user := range users {
-		entitlementId := fmt.Sprintf("group:%s:%s", groupId.Resource, client.AccessLevelValue(user.AccessLevel).String())
 		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
 		if err != nil {
 			return nil, "", outputAnnotations, fmt.Errorf("error creating principal ID: %w", err)
 		}
-
-		grantOptions := []grant.GrantOption{
-			grant.WithAnnotation(&v2.GrantExpandable{
-				EntitlementIds: []string{entitlementId},
-				Shallow:        false,
-			}),
-		}
-
 		outGrants = append(outGrants, grant.NewGrant(
 			resource,
 			client.AccessLevelValue(user.AccessLevel).String(),
 			principalId,
 		))
+	}
 
-		outGrants = append(outGrants, grant.NewGrant(
-			resource,
-			client.AccessLevelValue(user.AccessLevel).String(),
-			groupId,
-			grantOptions...,
-		))
+	// Indirect access paths, emitted once on the first page when enabled.
+	if pageToken == "" && !o.client.SyncDirectMembersOnly {
+		if parentGroup := resource.ParentResourceId; parentGroup != nil {
+			outGrants = append(outGrants, parentGroupInheritanceGrants(resource, parentGroup)...)
+		}
+
+		project, rlDesc, err := o.client.GetProject(ctx, resource.Id.Resource)
+		if rlDesc != nil {
+			outputAnnotations.WithRateLimiting(rlDesc)
+		}
+		if err != nil {
+			_, unhandledErr := handlePermissionError(ctx, err, "project", resource.Id.Resource)
+			if unhandledErr != nil {
+				return nil, "", outputAnnotations, unhandledErr
+			}
+			// Permission error: skip invited-group grants and continue.
+		} else {
+			// Invited groups (group→project): expand to effective membership.
+			outGrants = append(outGrants, sharedGroupGrants(resource, project.SharedWithGroups, groupEffectiveMemberEntitlement)...)
+		}
 	}
 
 	return outGrants, nextPageToken, outputAnnotations, nil
@@ -212,7 +219,7 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	return outputAnnotations, nil
 }
 
-func projectResource(project *client.Project, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
+func projectResource(project *client.Project, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var annotations []proto.Message
 
 	return resourceSdk.NewGroupResource(
