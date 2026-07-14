@@ -24,9 +24,11 @@ Information on last login is synced from self-hosted GitLab instances; this capa
 
 ### Access paths
 
-In GitLab a user can obtain access to a project or group in several ways: directly as a member, inherited from a parent or top-level group, or through another group that has been invited (shared) into the project or group. The connector surfaces each of these as a distinct, reviewable access path in C1 rather than flattening them into identical direct grants — so during an access review you can see *how* each user obtained their access.
+In GitLab a user can obtain access to a project or group in several ways: directly as a member, inherited from a parent or top-level group, or through another group that has been invited (shared) into the project or group.
 
-To sync only direct memberships and exclude these indirect access paths, enable the **Sync direct members only** setting.
+By default the connector emits effective membership as flattened direct grants, so every access path looks the same. Enable the **Sync access paths** setting to instead surface each path as a distinct, reviewable access path in C1 — so during an access review you can see *how* each user obtained their access. This setting is opt-in because it changes the shape and number of grants; existing connectors are unaffected until it is enabled.
+
+Separately, enable the **Sync direct members only** setting to sync only direct memberships and exclude indirect access (parent-group inheritance and invited/shared groups) entirely. It applies whether or not **Sync access paths** is enabled.
 
 ## Gather GitLab credentials
 

@@ -124,7 +124,7 @@
     {
       "name": "sync-direct-members-only",
       "displayName": "Sync direct members only",
-      "description": "When enabled, only sync direct members of groups and projects. Inherited members from parent groups will be excluded from membership grants.",
+      "description": "When enabled, only direct members of groups and projects are synced. Access inherited from parent groups or granted via invited (shared) groups is excluded.",
       "boolField": {}
     }
   ],

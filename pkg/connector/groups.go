@@ -38,11 +38,13 @@ var groupAccessLevels = []client.AccessLevelValue{
 
 // groupMemberEntitlement is the expansion-only entitlement for a group's DIRECT
 // members (the group→group sharing target). Not grantable; Grant is rejected.
+// Only emitted when the SyncAccessPaths flag is enabled.
 const groupMemberEntitlement = "member"
 
 // groupEffectiveMemberEntitlement is the expansion-only entitlement for a group's
 // EFFECTIVE membership (direct + inherited), the group→project sharing target.
-// Not grantable; Grant is rejected. See docs/doc-info.md.
+// Not grantable; Grant is rejected. Only emitted when the SyncAccessPaths flag is
+// enabled. See docs/doc-info.md.
 const groupEffectiveMemberEntitlement = "effective-member"
 
 // groupMemberEntitlementID returns a group's member entitlement ID (e.g. "group:g/28:member").
@@ -134,29 +136,100 @@ func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ 
 
 	// Expansion-only membership anchors (not grantable, immutable): member =
 	// direct, effective-member = direct + inherited. Grant on them is rejected.
-	rv = append(rv,
-		entitlement.NewAssignmentEntitlement(
-			resource,
-			groupMemberEntitlement,
-			entitlement.WithDisplayName(fmt.Sprintf("%s Group Member", resource.DisplayName)),
-			entitlement.WithDescription(fmt.Sprintf("Direct member of the %s group in Gitlab", resource.DisplayName)),
-			entitlement.WithAnnotation(&v2.EntitlementImmutable{}),
-		),
-		entitlement.NewAssignmentEntitlement(
-			resource,
-			groupEffectiveMemberEntitlement,
-			entitlement.WithDisplayName(fmt.Sprintf("%s Group Effective Member", resource.DisplayName)),
-			entitlement.WithDescription(fmt.Sprintf("Effective member (direct or inherited) of the %s group in Gitlab", resource.DisplayName)),
-			entitlement.WithAnnotation(&v2.EntitlementImmutable{}),
-		),
-	)
+	// Only emitted in access-path mode; without it the connector's entitlement
+	// surface stays identical to the flattened-membership behavior.
+	if o.client.SyncAccessPaths {
+		rv = append(rv,
+			entitlement.NewAssignmentEntitlement(
+				resource,
+				groupMemberEntitlement,
+				entitlement.WithDisplayName(fmt.Sprintf("%s Group Member", resource.DisplayName)),
+				entitlement.WithDescription(fmt.Sprintf("Direct member of the %s group in Gitlab", resource.DisplayName)),
+				entitlement.WithAnnotation(&v2.EntitlementImmutable{}),
+			),
+			entitlement.NewAssignmentEntitlement(
+				resource,
+				groupEffectiveMemberEntitlement,
+				entitlement.WithDisplayName(fmt.Sprintf("%s Group Effective Member", resource.DisplayName)),
+				entitlement.WithDescription(fmt.Sprintf("Effective member (direct or inherited) of the %s group in Gitlab", resource.DisplayName)),
+				entitlement.WithAnnotation(&v2.EntitlementImmutable{}),
+			),
+		)
+	}
 	return rv, "", nil, nil
 }
 
-// Grants emits direct members (access-level + member grants) and, unless
-// SyncDirectMembersOnly is set, the indirect access paths (parent inheritance and
-// invited groups) as expandable grants so each path stays distinct in C1.
+// Grants dispatches on the SyncAccessPaths flag. With it disabled (default) the
+// connector emits flattened effective membership as before; with it enabled each
+// access path is surfaced as a distinct expandable grant.
 func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	if o.client.SyncAccessPaths {
+		return o.grantsWithAccessPaths(ctx, resource, pToken)
+	}
+	return o.grantsFlattened(ctx, resource, pToken)
+}
+
+// grantsFlattened emits effective membership as flat direct grants — the
+// pre-access-path behavior, preserved unchanged for existing customers. When
+// SyncDirectMembersOnly is set, only direct members are listed; otherwise the
+// full effective set (direct + inherited) is flattened via ListAllGroupMembers.
+func (o *groupBuilder) grantsFlattened(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	var outGrants []*v2.Grant
+	var outputAnnotations = annotations.New()
+
+	var pageToken string
+	if pToken != nil {
+		pageToken = pToken.Token
+	}
+
+	groupId, err := fromGroupResourceId(resource.Id.Resource)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
+	}
+
+	var (
+		users         []*client.GroupMember
+		nextPageToken string
+		rateLimitDesc *v2.RateLimitDescription
+	)
+	if o.client.SyncDirectMembersOnly {
+		users, nextPageToken, rateLimitDesc, err = o.client.ListGroupMembers(ctx, groupId, pageToken)
+	} else {
+		users, nextPageToken, rateLimitDesc, err = o.client.ListAllGroupMembers(ctx, groupId, pageToken)
+	}
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
+	if err != nil {
+		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "group", groupId)
+		if unhandledErr != nil {
+			return nil, "", outputAnnotations, unhandledErr
+		}
+		if isPermissionError {
+			return nil, "", outputAnnotations, nil
+		}
+	}
+
+	for _, user := range users {
+		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
+		if err != nil {
+			return nil, "", outputAnnotations, fmt.Errorf("error creating principal ID: %w", err)
+		}
+		outGrants = append(outGrants, grant.NewGrant(
+			resource,
+			client.AccessLevelValue(user.AccessLevel).String(),
+			principalId,
+		))
+	}
+
+	return outGrants, nextPageToken, outputAnnotations, nil
+}
+
+// grantsWithAccessPaths emits direct members (access-level + member grants) and,
+// unless SyncDirectMembersOnly is set, the indirect access paths (parent
+// inheritance and invited groups) as expandable grants so each path stays
+// distinct in C1.
+func (o *groupBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 

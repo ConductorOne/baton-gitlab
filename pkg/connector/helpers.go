@@ -55,6 +55,7 @@ var inheritedAccessLevels = []client.AccessLevelValue{
 // parentGroupInheritanceGrants surfaces "access via parent/top-level group" as a
 // distinct path: per level, the parent group as principal, expandable to the
 // parent's members at that level (non-shallow, so ancestors resolve transitively).
+// Only used in access-path mode (SyncAccessPaths).
 func parentGroupInheritanceGrants(target *v2.Resource, parentGroup *v2.ResourceId) []*v2.Grant {
 	grants := make([]*v2.Grant, 0, len(inheritedAccessLevels))
 	for _, level := range inheritedAccessLevels {
@@ -77,7 +78,8 @@ func parentGroupInheritanceGrants(target *v2.Resource, parentGroup *v2.ResourceI
 // principal on the target's access-level entitlement, expandable to the invited
 // group's membership. expansionSlug picks which membership entitlement to expand
 // into (group→group = member/direct, group→project = effective-member); see
-// docs/doc-info.md for the sharing-semantics rationale.
+// docs/doc-info.md for the sharing-semantics rationale. Only used in access-path
+// mode (SyncAccessPaths).
 //
 // Unlike parent inheritance (which excludes Minimal because it confers no child
 // access), a share carries whatever group_access_level GitLab reports, so the
@@ -120,7 +122,8 @@ func sharedGroupGrants(ctx context.Context, target *v2.Resource, shared []client
 // effectiveMemberChainGrants composes a group's effective-member entitlement
 // (direct + ancestor-inherited members) purely via expansion — no extra API call.
 // It excludes the group's own inbound shares because group→project sharing is
-// non-transitive. See docs/doc-info.md for the semantics.
+// non-transitive. See docs/doc-info.md for the semantics. Only used in access-path
+// mode (SyncAccessPaths).
 func effectiveMemberChainGrants(group *v2.Resource, parentGroup *v2.ResourceId) []*v2.Grant {
 	expandable := func(srcEntitlementID string) grant.GrantOption {
 		return grant.WithAnnotation(&v2.GrantExpandable{

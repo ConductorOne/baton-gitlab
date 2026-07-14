@@ -25,6 +25,15 @@ To use this connector, you will need different things depending on which version
 ## Connector capabilities
 - Sync Users, projects and groups.
 
+- Optional access-path labeling (opt-in via `--sync-access-paths`, off by default):
+  when enabled, group/project access is surfaced as distinct, reviewable paths —
+  direct membership, inheritance from a parent/top-level group, and access via an
+  invited (shared) group — instead of a flattened effective list. When disabled
+  (the default), effective membership is emitted as flattened direct grants,
+  preserving the previous grant shape and counts. The `--sync-direct-members-only`
+  flag is separate and, in either mode, restricts syncing to direct memberships
+  only (excluding all inherited/shared access).
+
 - Supports Account provisioning:
   When you creating and new account, the following fields are required:
     - Name: The name of the user.
@@ -130,6 +139,8 @@ Flags:
       --otel-collector-endpoint string   The endpoint of the OpenTelemetry collector to send observability data to ($BATON_OTEL_COLLECTOR_ENDPOINT)
   -p, --provisioning                     This must be set in order for provisioning actions to be enabled ($BATON_PROVISIONING)
       --skip-full-sync                   This must be set to skip a full sync ($BATON_SKIP_FULL_SYNC)
+      --sync-access-paths                Label grants by access path (direct, inherited, or invited group). Disabled (default) keeps the previous flattened effective-membership grants. ($BATON_SYNC_ACCESS_PATHS)
+      --sync-direct-members-only         When enabled, only direct members of groups and projects are synced. Access inherited from parent groups or granted via invited (shared) groups is excluded. ($BATON_SYNC_DIRECT_MEMBERS_ONLY)
       --ticketing                        This must be set to enable ticketing support ($BATON_TICKETING)
   -v, --version                          version for baton-gitlab
 

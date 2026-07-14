@@ -26,9 +26,10 @@ type GitlabClient struct {
 	IsOnPremise           bool
 	accessToken           string
 	SyncDirectMembersOnly bool
+	SyncAccessPaths       bool
 }
 
-func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string, syncDirectMembersOnly bool) (*GitlabClient, error) {
+func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string, syncDirectMembersOnly, syncAccessPaths bool) (*GitlabClient, error) {
 	options := []uhttp.Option{uhttp.WithLogger(true, ctxzap.Extract(ctx)), uhttp.WithUserAgent("baton-gitlab/1.0")}
 
 	client, err := uhttp.NewClient(ctx, options...)
@@ -50,6 +51,7 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string,
 		IsOnPremise:           baseURLTrimmed != "https://gitlab.com",
 		accessToken:           accessToken,
 		SyncDirectMembersOnly: syncDirectMembersOnly,
+		SyncAccessPaths:       syncAccessPaths,
 	}, nil
 }
 

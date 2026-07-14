@@ -3,12 +3,18 @@ While developing the connector, please fill out this form. This information is n
 ## Connector capabilities
 - Sync Users, projects and groups.
 
-- Labels grants by access path: memberships are surfaced as distinct, reviewable
-  paths — direct membership, inheritance from a parent/top-level group, and
-  access through an invited (shared) group — instead of a flattened effective
-  list. Indirect paths are expressed via expandable grants (group-as-principal
-  pointing at a group's membership entitlement). The `--sync-direct-members-only`
-  flag restricts syncing to direct memberships only.
+- Optionally labels grants by access path (opt-in via `--sync-access-paths`,
+  disabled by default): when enabled, memberships are surfaced as distinct,
+  reviewable paths — direct membership, inheritance from a parent/top-level
+  group, and access through an invited (shared) group — instead of a flattened
+  effective list. Indirect paths are expressed via expandable grants
+  (group-as-principal pointing at a group's membership entitlement), and two
+  expansion-only entitlements (`member`, `effective-member`) are added to groups.
+  When disabled (the default), the connector emits effective membership as
+  flattened direct grants, preserving the previous grant shape and counts — so
+  existing deployments see no change unless they opt in. The
+  `--sync-direct-members-only` flag restricts syncing to direct memberships only
+  and applies in both modes.
 
   Invited (shared) group resolution follows GitLab's own sharing semantics,
   which differ by target: a group shared into another **group** grants access

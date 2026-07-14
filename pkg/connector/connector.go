@@ -131,10 +131,10 @@ func (d *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, accessToken string, baseURL string, accountCreationGroup string, syncDirectMembersOnly bool) (*Connector, error) {
+func New(ctx context.Context, accessToken string, baseURL string, accountCreationGroup string, syncDirectMembersOnly, syncAccessPaths bool) (*Connector, error) {
 	l := ctxzap.Extract(ctx)
 
-	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup, syncDirectMembersOnly)
+	gitlabClient, err := client.New(ctx, accessToken, baseURL, accountCreationGroup, syncDirectMembersOnly, syncAccessPaths)
 	if err != nil {
 		l.Error("error creating gitlab client", zap.Error(err))
 		return nil, err

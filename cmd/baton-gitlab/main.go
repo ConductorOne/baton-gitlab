@@ -54,6 +54,7 @@ func getConnector(ctx context.Context, glc *cfg.Gitlab) (types.ConnectorServer, 
 		glc.BaseUrl,
 		glc.AccountCreationGroup,
 		glc.SyncDirectMembersOnly,
+		glc.SyncAccessPaths,
 	)
 
 	if err != nil {
