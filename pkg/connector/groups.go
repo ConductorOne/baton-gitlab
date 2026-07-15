@@ -248,13 +248,16 @@ func (o *groupBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2.R
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "group", groupId)
+		_, unhandledErr := handlePermissionError(ctx, err, "group", groupId)
 		if unhandledErr != nil {
 			return nil, "", outputAnnotations, unhandledErr
 		}
-		if isPermissionError {
-			return nil, "", outputAnnotations, nil
-		}
+		// Permission error listing members: skip direct members but still emit the
+		// pure-expansion indirect anchors below, which need no member data. Otherwise
+		// projects/subgroups that inherit from or are invited by this group silently
+		// lose those paths, since they now resolve solely by expanding this group's
+		// entitlements rather than by flattening via /members/all.
+		users, nextPageToken = nil, ""
 	}
 
 	for _, user := range users {
@@ -401,6 +404,17 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	var outputAnnotations = annotations.New()
 
 	groupIdAndName := grant.Entitlement.Resource.Id.Resource
+
+	// The member/effective-member entitlements are expansion-only attribution
+	// anchors that carry real user principals; revoking them must never remove a
+	// real group membership. Mirror the guard in Grant (EntitlementImmutable should
+	// already prevent this path, but guard defensively).
+	if grant.Entitlement.Id == groupMemberEntitlementID(groupIdAndName) || grant.Entitlement.Id == groupEffectiveMemberEntitlementID(groupIdAndName) {
+		return nil, status.Errorf(codes.InvalidArgument,
+			"baton-gitlab: the %q entitlement is expansion-only and cannot be revoked directly; it maps to no assignable access level",
+			strings.TrimPrefix(grant.Entitlement.Id, groupResourceType.Id+":"+groupIdAndName+":"))
+	}
+
 	groupId, err := fromGroupResourceId(groupIdAndName)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing group resource id: %w", err)

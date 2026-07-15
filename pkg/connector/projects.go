@@ -190,13 +190,16 @@ func (o *projectBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		isPermissionError, unhandledErr := handlePermissionError(ctx, err, "project", resource.Id.Resource)
+		_, unhandledErr := handlePermissionError(ctx, err, "project", resource.Id.Resource)
 		if unhandledErr != nil {
 			return nil, "", outputAnnotations, unhandledErr
 		}
-		if isPermissionError {
-			return nil, "", outputAnnotations, nil
-		}
+		// Permission error listing members: skip direct members but still emit the
+		// pure-expansion parent-inheritance anchor below, which needs no member data.
+		// Otherwise a project whose members are unreadable loses its inherited-access
+		// path entirely, since it now resolves by expanding group:<parent>:<level>
+		// rather than by flattening via /members/all.
+		users, nextPageToken = nil, ""
 	}
 
 	for _, user := range users {
