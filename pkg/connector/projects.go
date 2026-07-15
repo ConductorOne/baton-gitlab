@@ -69,7 +69,7 @@ func (o *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 			parentGroup = parentResourceID
 		}
 
-		resource, err := projectResource(project, parentGroup)
+		resource, err := projectResource(project, parentGroup, o.client.IsOnPremise)
 		if err != nil {
 			return nil, "", outputAnnotations, err
 		}
@@ -97,7 +97,8 @@ func (o *projectBuilder) Entitlements(ctx context.Context, resource *v2.Resource
 
 // Grants dispatches on the SyncAccessPaths flag. With it disabled (default) the
 // connector emits flattened effective membership as before; with it enabled each
-// access path is surfaced as a distinct expandable grant.
+// access path (direct, inherited from a parent group, or via an invited group) is
+// surfaced as a distinct expandable grant.
 func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	if o.client.SyncAccessPaths {
 		return o.grantsWithAccessPaths(ctx, resource, pToken)
@@ -106,29 +107,22 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 }
 
 // grantsFlattened emits effective membership as flat direct grants plus a
-// parent-group expandable grant per member — the pre-access-path behavior,
-// preserved unchanged for existing customers. When SyncDirectMembersOnly is set,
-// only direct members are listed; otherwise the full effective set is flattened
-// via ListAllProjectMembers.
+// parent-group expandable grant per member — the pre-access-path behavior, preserved
+// unchanged for existing customers. When SyncDirectMembersOnly is set, only direct
+// members are listed; otherwise the full effective set is flattened via
+// ListAllProjectMembers.
 func (o *projectBuilder) grantsFlattened(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 
-	var pageToken string
-	if pToken != nil {
-		pageToken = pToken.Token
-	}
-
-	var (
-		users         []*client.ProjectMember
-		nextPageToken string
-		rateLimitDesc *v2.RateLimitDescription
-		err           error
-	)
+	var users []*client.ProjectMember
+	var err error
+	var nextPageToken string
+	var rateLimitDesc *v2.RateLimitDescription
 	if o.client.SyncDirectMembersOnly {
-		users, nextPageToken, rateLimitDesc, err = o.client.ListProjectMembers(ctx, resource.Id.Resource, pageToken)
+		users, nextPageToken, rateLimitDesc, err = o.client.ListProjectMembers(ctx, resource.Id.Resource, pToken.Token)
 	} else {
-		users, nextPageToken, rateLimitDesc, err = o.client.ListAllProjectMembers(ctx, resource.Id.Resource, pageToken)
+		users, nextPageToken, rateLimitDesc, err = o.client.ListAllProjectMembers(ctx, resource.Id.Resource, pToken.Token)
 	}
 	if rateLimitDesc != nil {
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
@@ -173,9 +167,11 @@ func (o *projectBuilder) grantsFlattened(ctx context.Context, resource *v2.Resou
 	return outGrants, nextPageToken, outputAnnotations, nil
 }
 
-// grantsWithAccessPaths emits direct members and, unless SyncDirectMembersOnly is
-// set, the indirect access paths (parent inheritance and invited groups) as
-// expandable grants so each path stays distinct in C1.
+// grantsWithAccessPaths emits a project's direct members plus its indirect access
+// paths — inheritance from ancestor groups (up to and including the top-level group)
+// and access via invited (shared) groups — as expandable grants. It reuses the
+// existing per-access-level entitlements (no synthetic membership entitlement) and
+// emits paths only for levels that actually have members (no empty expansions).
 func (o *projectBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
@@ -195,13 +191,11 @@ func (o *projectBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2
 			return nil, "", outputAnnotations, unhandledErr
 		}
 		// Permission error listing members: skip direct members but still emit the
-		// pure-expansion parent-inheritance anchor below, which needs no member data.
-		// Otherwise a project whose members are unreadable loses its inherited-access
-		// path entirely, since it now resolves by expanding group:<parent>:<level>
-		// rather than by flattening via /members/all.
+		// pure-expansion indirect anchors below, which need no project member data.
 		users, nextPageToken = nil, ""
 	}
 
+	// Path 1: direct members.
 	for _, user := range users {
 		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
 		if err != nil {
@@ -214,12 +208,18 @@ func (o *projectBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2
 		))
 	}
 
-	// Indirect access paths, emitted once on the first page when enabled.
+	// Indirect access paths, emitted once on the first page (unless direct-only).
 	if pageToken == "" && !o.client.SyncDirectMembersOnly {
-		if parentGroup := resource.ParentResourceId; parentGroup != nil {
-			outGrants = append(outGrants, parentGroupInheritanceGrants(resource, parentGroup)...)
+		// Path 2: inheritance from ancestor groups (immediate subgroup up to top-level).
+		if resource.ParentResourceId != nil {
+			inherited, err := accessPathInheritanceGrants(ctx, o.client, resource, resource.ParentResourceId, &outputAnnotations)
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			outGrants = append(outGrants, inherited...)
 		}
 
+		// Path 3: groups invited into this project.
 		project, rlDesc, err := o.client.GetProject(ctx, resource.Id.Resource)
 		if rlDesc != nil {
 			outputAnnotations.WithRateLimiting(rlDesc)
@@ -231,8 +231,11 @@ func (o *projectBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2
 			}
 			// Permission error: skip invited-group grants and continue.
 		} else {
-			// Invited groups (group→project): expand to effective membership.
-			outGrants = append(outGrants, sharedGroupGrants(ctx, resource, project.SharedWithGroups, groupEffectiveMemberEntitlement)...)
+			invited, err := accessPathInvitedGrants(ctx, o.client, resource, project.SharedWithGroups, &outputAnnotations)
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			outGrants = append(outGrants, invited...)
 		}
 	}
 
@@ -292,7 +295,21 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	}
 	if err != nil {
 		if errors.Is(err, client.ErrNotFound) {
-			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+			// Not a direct member. If the principal still has effective access, it is
+			// inherited/invited — reject instead of falsely reporting success (which
+			// would reappear next sync). Otherwise the membership is genuinely gone.
+			member, rlDesc, checkErr := o.client.GetProjectMemberAll(ctx, projectId, strconv.Itoa(userId))
+			if rlDesc != nil {
+				outputAnnotations.WithRateLimiting(rlDesc)
+			}
+			switch {
+			case checkErr == nil && member != nil:
+				return outputAnnotations, revokeInheritedError("project", projectId)
+			case checkErr != nil && !errors.Is(checkErr, client.ErrNotFound):
+				return outputAnnotations, fmt.Errorf("error verifying project membership: %w", checkErr)
+			default:
+				return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+			}
 		}
 		return outputAnnotations, fmt.Errorf("error removing user from project: %w", err)
 	}
@@ -300,7 +317,7 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	return outputAnnotations, nil
 }
 
-func projectResource(project *client.Project, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+func projectResource(project *client.Project, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
 	var annotations []proto.Message
 
 	return resourceSdk.NewGroupResource(

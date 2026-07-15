@@ -31,15 +31,14 @@ type Group struct {
 	SharedWithGroups  []SharedGroup `json:"shared_with_groups"`
 }
 
-// SharedGroup represents a group that has been invited (shared) into another
-// group or project, granting its members access at group_access_level.
-// Returned by GET /groups/:id and GET /projects/:id (not by the list endpoints).
+// SharedGroup is a group invited (shared) into another group or project. GitLab
+// reports it under shared_with_groups on the group/project object. GroupAccessLevel
+// is the ceiling access the invited group's members receive on the target.
 type SharedGroup struct {
-	GroupID          int      `json:"group_id"`
-	GroupName        string   `json:"group_name"`
-	GroupFullPath    string   `json:"group_full_path"`
-	GroupAccessLevel int      `json:"group_access_level"`
-	ExpiresAt        *ISOTime `json:"expires_at"`
+	GroupID          int    `json:"group_id"`
+	GroupName        string `json:"group_name"`
+	GroupFullPath    string `json:"group_full_path"`
+	GroupAccessLevel int    `json:"group_access_level"`
 }
 
 type Namespace struct {

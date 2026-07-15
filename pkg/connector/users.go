@@ -464,7 +464,7 @@ func userResource(user any) (*v2.Resource, error) {
 		name = pendingInvitationUser + strings.ToLower(email)
 	}
 
-	profile := map[string]any{
+	profile := map[string]interface{}{
 		"first_name":       name,
 		"username":         username,
 		profileFieldEmail:  email,

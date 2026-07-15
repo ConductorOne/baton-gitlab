@@ -55,7 +55,7 @@ func New(ctx context.Context, accessToken, baseURL, accountCreationGroup string,
 	}, nil
 }
 
-func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target any, body any) (*http.Header, *v2.RateLimitDescription, error) {
+func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint string, target interface{}, body interface{}) (*http.Header, *v2.RateLimitDescription, error) {
 	endpoint = fmt.Sprintf("%s%s", c.baseURL, endpoint)
 	relativeURL, err := url.Parse(endpoint)
 	if err != nil {
@@ -190,6 +190,22 @@ func (c *GitlabClient) ListAllGroupMembers(ctx context.Context, groupID string, 
 
 	nextToken := headers.Get("X-Next-Page")
 	return members, nextToken, rateLimitDesc, nil
+}
+
+// GetGroupMemberAll retrieves a single member of a group including inherited and
+// invited (shared) members (GET /groups/:id/members/all/:user_id). Returns
+// ErrNotFound when the user has no effective access to the group. Used to tell a
+// direct membership apart from inherited/invited access on revoke.
+func (c *GitlabClient) GetGroupMemberAll(ctx context.Context, groupID, userID string) (*GroupMember, *v2.RateLimitDescription, error) {
+	var member GroupMember
+
+	path := fmt.Sprintf("/api/v4/groups/%s/members/all/%s", PathEscape(groupID), PathEscape(userID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, path, &member, nil)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &member, rateLimitDesc, nil
 }
 
 // ListGroupMembers retrieves members of a specific group.
@@ -331,6 +347,22 @@ func (c *GitlabClient) ListAllProjectMembers(ctx context.Context, projectID stri
 
 	nextToken := headers.Get("X-Next-Page")
 	return members, nextToken, rateLimitDesc, nil
+}
+
+// GetProjectMemberAll retrieves a single member of a project including inherited and
+// invited (shared) members (GET /projects/:id/members/all/:user_id). Returns
+// ErrNotFound when the user has no effective access to the project. Used to tell a
+// direct membership apart from inherited/invited access on revoke.
+func (c *GitlabClient) GetProjectMemberAll(ctx context.Context, projectID, userID string) (*ProjectMember, *v2.RateLimitDescription, error) {
+	var member ProjectMember
+
+	path := fmt.Sprintf("/api/v4/projects/%s/members/all/%s", PathEscape(projectID), PathEscape(userID))
+	_, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, path, &member, nil)
+	if err != nil {
+		return nil, rateLimitDesc, err
+	}
+
+	return &member, rateLimitDesc, nil
 }
 
 // AddProjectMember adds a member to a project.

@@ -22,13 +22,9 @@ The GitLab connector supports [automatic account provisioning and deprovisioning
 
 Information on last login is synced from self-hosted GitLab instances; this capability is not supported on GitLab.com due to permissions limitations. 
 
-### Access paths
-
-In GitLab a user can obtain access to a project or group in several ways: directly as a member, inherited from a parent or top-level group, or through another group that has been invited (shared) into the project or group.
-
-By default the connector emits effective membership as flattened direct grants, so every access path looks the same. Enable the **Sync access paths** setting to instead surface each path as a distinct, reviewable access path in C1 — so during an access review you can see *how* each user obtained their access. This setting is opt-in because it changes the shape and number of grants; existing connectors are unaffected until it is enabled.
-
-Separately, enable the **Sync direct members only** setting to sync only direct memberships and exclude indirect access (parent-group inheritance and invited/shared groups) entirely. It applies whether or not **Sync access paths** is enabled.
+<Note>
+**Access path visibility (optional).** By default, C1 shows effective membership as a single flattened list of grants. Enable the **Sync access paths** setting to instead label each grant by how the access was obtained — direct membership, inheritance from a parent or top-level group, or access through an invited (shared) group — so reviewers can see and act on each access path separately. This setting is off by default and does not change existing grants until you enable it.
+</Note>
 
 ## Gather GitLab credentials
 

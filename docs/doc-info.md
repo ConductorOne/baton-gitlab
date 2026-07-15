@@ -3,40 +3,6 @@ While developing the connector, please fill out this form. This information is n
 ## Connector capabilities
 - Sync Users, projects and groups.
 
-- Optionally labels grants by access path (opt-in via `--sync-access-paths`,
-  disabled by default): when enabled, memberships are surfaced as distinct,
-  reviewable paths — direct membership, inheritance from a parent/top-level
-  group, and access through an invited (shared) group — instead of a flattened
-  effective list. Indirect paths are expressed via expandable grants
-  (group-as-principal pointing at a group's membership entitlement), and two
-  expansion-only entitlements (`member`, `effective-member`) are added to groups.
-  When disabled (the default), the connector emits effective membership as
-  flattened direct grants, preserving the previous grant shape and counts — so
-  existing deployments see no change unless they opt in. The
-  `--sync-direct-members-only` flag restricts syncing to direct memberships only
-  and applies in both modes.
-
-  Invited (shared) group resolution follows GitLab's own sharing semantics,
-  which differ by target: a group shared into another **group** grants access
-  only to the invited group's *direct* members, so that path expands to the
-  invited group's `member` entitlement; a group shared into a **project** grants
-  access to the invited group's *direct and inherited* members, so that path
-  expands to the invited group's `effective-member` entitlement (composed from
-  the group's direct members plus its ancestor-inherited members via expansion,
-  no extra API calls). Sharing is non-transitive — a group's own inbound (shared)
-  members are not re-shared onward — so `effective-member` deliberately excludes
-  them. Parent/top-level inheritance is fully transitive in both cases.
-
-  Known limitation: on the invited (shared) group path, expanded members are
-  shown at the share's `group_access_level`, which is an upper bound. GitLab caps
-  a shared member's effective access at `min(role in the invited group,
-  group_access_level)`, so a member whose role in the invited group is below the
-  share level may be shown one level higher on the shared path. This is a
-  consequence of expressing the path via expansion (`GrantExpandable` copies
-  principals without recomputing per-member levels). The direct and
-  parent/top-level inheritance paths preserve exact access levels; only the
-  invited-group path uses the share level.
-
 - Supports Account provisioning:
   When you creating and new account, the following fields are required:
     - Name: The name of the user.
@@ -70,6 +36,46 @@ While developing the connector, please fill out this form. This information is n
    The connector can provision:
    — Group entitlements for Users 
    — Project entitlements for Users
+
+## Access-path labeling (--sync-access-paths, opt-in)
+
+By default the connector emits effective membership as flattened direct grants: a
+user who can access a group/project shows up as a single grant, regardless of
+whether that access is direct, inherited from a parent group, or granted through an
+invited (shared) group. All paths look the same.
+
+When `--sync-access-paths` is enabled, each way a principal obtained access is
+surfaced as its own expandable grant, so the access path is visible and reviewable:
+
+  - Direct membership — a plain user grant on the resource's access-level entitlement.
+  - Inheritance from a parent/top-level group — one expandable grant per ancestor
+    group and per access level that ancestor actually has members at, with the
+    ancestor group as principal, expanding into that group's matching per-level
+    entitlement. Each ancestor (immediate subgroup up to the top-level group) is a
+    distinct path, so a top-level group member is shown as having access to nested
+    projects through the top-level group specifically.
+  - Access via an invited (shared) group — the invited group as principal on the
+    target, expanding into the invited group's per-level entitlements. GitLab caps a
+    shared member's effective access at min(their level in the invited group, the
+    share's access level); the connector applies that cap per level, so no member is
+    shown at a higher level than GitLab actually grants.
+
+Design notes:
+  - Expandable grants use Shallow=true: each grant is a single, crisp hop, and the
+    ConductorOne platform resolves deeper nesting by walking the connected edges.
+  - No new entitlements are added — the model reuses the existing per-access-level
+    entitlements, and only emits paths for access levels that actually have members,
+    so no grant expands to an empty set.
+  - The default (flag off) output is unchanged (identical grant shape and counts),
+    so existing deployments are unaffected until they opt in.
+  - `--sync-direct-members-only` still applies: with it set, only direct members are
+    synced and the inheritance/invited paths are not emitted.
+
+Known limitation: GitLab group→project sharing also grants access to the invited
+group's inherited members. When the invited group is itself a subgroup, those
+inherited members are surfaced via their own group's path rather than the invited
+path. Invited top-level groups (the common case) are unaffected, since their direct
+and effective membership are the same.
 
 ## Connector credentials
 

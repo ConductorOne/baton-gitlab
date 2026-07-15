@@ -28,12 +28,12 @@ var (
 	SyncDirectMembersOnly = field.BoolField(
 		"sync-direct-members-only",
 		field.WithDisplayName("Sync direct members only"),
-		field.WithDescription("When enabled, only direct members of groups and projects are synced. Access inherited from parent groups or granted via invited (shared) groups is excluded."),
+		field.WithDescription("When enabled, only sync direct members of groups and projects. Inherited members from parent groups will be excluded from membership grants."),
 	)
 	SyncAccessPaths = field.BoolField(
 		"sync-access-paths",
 		field.WithDisplayName("Sync access paths"),
-		field.WithDescription("Label grants by access path (direct, inherited, or invited group). Disabled (default) keeps the previous flattened effective-membership grants."),
+		field.WithDescription("Label grants by access path (direct, inherited, or via an invited group). Disabled (default) keeps the previous flattened effective-membership grants."),
 	)
 
 	// ConfigurationFields defines the external configuration required for the
