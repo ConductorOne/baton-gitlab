@@ -23,10 +23,3 @@ var projectResourceType = &v2.ResourceType{
 	Id:          "project",
 	DisplayName: "Project",
 }
-
-// Shared field-name keys used by the account-creation schema and resource
-// profiles. Extracted so the literal is defined once (goconst).
-const (
-	fieldName  = "name"
-	fieldEmail = "email"
-)
