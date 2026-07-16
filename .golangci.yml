@@ -1,12 +1,16 @@
+# This file is managed by baton-admin. DO NOT EDIT!!!
 version: "2"
-
+run:
+  modules-download-mode: readonly
 linters:
+  default: none
   enable:
     - asasalint
     - asciicheck
     - bidichk
     - bodyclose
     - durationcheck
+    - errcheck
     - errorlint
     - exhaustive
     - forbidigo
@@ -17,6 +21,8 @@ linters:
     - gomoddirectives
     - goprintffuncname
     - gosec
+    - govet
+    - ineffassign
     - nakedret
     - nilerr
     - noctx
@@ -25,11 +31,12 @@ linters:
     - nosprintfhostport
     - predeclared
     - revive
+    - staticcheck
     - tparallel
     - unconvert
+    - unused
     - usestdlibvars
     - whitespace
-
   settings:
     exhaustive:
       default-signifies-exhaustive: true
@@ -41,15 +48,13 @@ linters:
           rules: ${base-path}/tools/rules.go
         underef:
           skipRecvDeref: false
-    gomoddirectives:
-      replace-allow-list:
-        - gitlab.com/gitlab-org/api/client-go
-      replace-local: true
     govet:
       disable:
         - fieldalignment
         - shadow
       enable-all: true
+    nakedret:
+      max-func-lines: 0
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -86,10 +91,32 @@ linters:
               - HTTP
               - API
             - []
-
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - godot
+        source: (TODO)
+      - path: _test\.go$
+        linters:
+          - goconst
+      - path: (.+)\.go$
+        text: third_party$
+      - path: (.+)\.go$
+        text: builtin$
+      - path: (.+)\.go$
+        text: examples$
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-same-issues: 50
-
 formatters:
   exclusions:
     generated: lax
