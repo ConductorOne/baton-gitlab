@@ -281,12 +281,12 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 
 func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPremise bool) (*v2.Resource, error) {
 	profile := map[string]interface{}{
-		"id":          group.ID,
-		"name":        group.Name,
-		"full_name":   group.FullName,
-		"description": group.Description,
-		"archived":    group.Archived,
-		"visibility":  group.Visibility,
+		"id":             group.ID,
+		profileFieldName: group.Name,
+		"full_name":      group.FullName,
+		"description":    group.Description,
+		"archived":       group.Archived,
+		"visibility":     group.Visibility,
 	}
 
 	if group.MarkedForDeletion != nil && !time.Time(*group.MarkedForDeletion).IsZero() {

@@ -13,6 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	profileFieldName  = "name"
+	profileFieldEmail = "email"
+)
+
 type Connector struct {
 	client *client.GitlabClient
 }
@@ -39,7 +44,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 		Description: "GitLab is a web-based Git repository manager with built-in CI/CD pipeline functionality.",
 		AccountCreationSchema: &v2.ConnectorAccountCreationSchema{
 			FieldMap: map[string]*v2.ConnectorAccountCreationSchema_Field{
-				"name": {
+				profileFieldName: {
 					DisplayName: "Name",
 					Required:    true,
 					Description: "This name will be used for the user.",
@@ -49,7 +54,7 @@ func (d *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 					Placeholder: "Name",
 					Order:       1,
 				},
-				"email": {
+				profileFieldEmail: {
 					DisplayName: "Email",
 					Required:    true,
 					Description: "This email will be used as the login for the user.",

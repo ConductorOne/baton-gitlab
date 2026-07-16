@@ -222,9 +222,9 @@ func projectResource(project *client.Project, parentResourceID *v2.ResourceId, i
 		[]resourceSdk.GroupTraitOption{
 			resourceSdk.WithGroupProfile(
 				map[string]interface{}{
-					"id":          project.ID,
-					"name":        project.Name,
-					"description": project.Description,
+					"id":             project.ID,
+					profileFieldName: project.Name,
+					"description":    project.Description,
 				},
 			),
 		},
