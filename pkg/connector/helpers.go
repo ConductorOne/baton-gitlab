@@ -60,6 +60,23 @@ func revokeInheritedError(resourceType, resourceID string) error {
 		resourceType, resourceID)
 }
 
+// isNotFoundError reports whether err is a GitLab 404. The uhttp client surfaces a 404
+// as a gRPC status with codes.NotFound; the client.ErrNotFound sentinel is only returned
+// by CheckResponse, which doRequest bypasses because uhttp already errors on 4xx. We
+// check both so the detection is robust regardless of which path produced the error.
+// (Dominant idiom across baton-openai/segment/microsoft-entra/active-directory.)
+func isNotFoundError(err error) bool {
+	return errors.Is(err, client.ErrNotFound) || status.Code(err) == codes.NotFound
+}
+
+// isAlreadyExistsError reports whether err is a GitLab 409 Conflict ("Member already
+// exists"). uhttp maps HTTP 409 → codes.AlreadyExists; the hand-rolled *ErrorResponse
+// path never fires for doRequest calls (uhttp errors on 4xx before CheckResponse runs),
+// so idempotency must gate on the gRPC code, mirroring isNotFoundError.
+func isAlreadyExistsError(err error) bool {
+	return status.Code(err) == codes.AlreadyExists
+}
+
 func handlePermissionError(ctx context.Context, err error, resourceType, resourceId string) (bool, error) {
 	if err == nil {
 		return false, nil
@@ -127,11 +144,17 @@ func inheritanceGrants(target *v2.Resource, ancestor *v2.ResourceId, levelSlugs 
 			target,
 			slug,
 			ancestor,
-			grant.WithAnnotation(&v2.GrantExpandable{
-				EntitlementIds:  []string{fmt.Sprintf("%s:%s:%s", groupResourceType.Id, ancestor.Resource, slug)},
-				Shallow:         true,
-				ResourceTypeIds: []string{userResourceType.Id},
-			}),
+			// GrantExpandable surfaces the ancestor's members as access-through-this-path;
+			// GrantImmutable marks the edge non-revocable — inherited access is structural
+			// and can only be removed at its source, so C1 must not offer a direct revoke.
+			grant.WithAnnotation(
+				&v2.GrantExpandable{
+					EntitlementIds:  []string{fmt.Sprintf("%s:%s:%s", groupResourceType.Id, ancestor.Resource, slug)},
+					Shallow:         true,
+					ResourceTypeIds: []string{userResourceType.Id},
+				},
+				&v2.GrantImmutable{},
+			),
 		))
 	}
 	return grants
@@ -155,12 +178,19 @@ func invitedGroupGrants(target *v2.Resource, shared []client.SharedGroup, member
 		sources := make(map[client.AccessLevelValue]map[string]struct{})
 		for _, m := range membersByGroup[sharedGroup.GroupID] {
 			lvl := client.AccessLevelValue(m.AccessLevel)
-			if lvl < client.MinimalAccessPermissions || lvl > client.OwnerPermissions {
+			// A member level in range but not one of GitLab's defined levels has no
+			// entitlement slug; skip it so we never build a malformed source ID.
+			if lvl < client.MinimalAccessPermissions || lvl > client.OwnerPermissions || lvl.String() == "" {
 				continue
 			}
 			eff := lvl
 			if share >= client.MinimalAccessPermissions && share < eff {
 				eff = share
+			}
+			// A non-standard share level (in range but undefined) has no slug either;
+			// skip rather than emit a grant on an empty-slug entitlement.
+			if eff.String() == "" {
+				continue
 			}
 			src := fmt.Sprintf("%s:%s:%s", groupResourceType.Id, invitedResourceID, lvl.String())
 			if sources[eff] == nil {
@@ -184,11 +214,17 @@ func invitedGroupGrants(target *v2.Resource, shared []client.SharedGroup, member
 				target,
 				eff.String(),
 				principalID,
-				grant.WithAnnotation(&v2.GrantExpandable{
-					EntitlementIds:  srcIDs,
-					Shallow:         true,
-					ResourceTypeIds: []string{userResourceType.Id},
-				}),
+				// Invited-group access flows through the invited group's membership
+				// (GrantExpandable) and is not revocable at the target (GrantImmutable):
+				// it must be removed by un-sharing or editing the invited group.
+				grant.WithAnnotation(
+					&v2.GrantExpandable{
+						EntitlementIds:  srcIDs,
+						Shallow:         true,
+						ResourceTypeIds: []string{userResourceType.Id},
+					},
+					&v2.GrantImmutable{},
+				),
 			))
 		}
 	}

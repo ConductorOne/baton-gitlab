@@ -66,6 +66,12 @@ Design notes:
   - No new entitlements are added — the model reuses the existing per-access-level
     entitlements, and only emits paths for access levels that actually have members,
     so no grant expands to an empty set.
+  - Inherited and invited (shared) paths are attribution-only: their expandable grants
+    are marked immutable, so the platform never offers a direct revoke of access that
+    is really held elsewhere. Revoking such access at the target is rejected
+    (InvalidArgument) and points at its source group, since removing a non-existent
+    direct membership is a no-op that would reappear on the next sync. Direct
+    memberships revoke normally.
   - The default (flag off) output is unchanged (identical grant shape and counts),
     so existing deployments are unaffected until they opt in.
   - `--sync-direct-members-only` still applies: with it set, only direct members are
@@ -76,6 +82,13 @@ group's inherited members. When the invited group is itself a subgroup, those
 inherited members are surfaced via their own group's path rather than the invited
 path. Invited top-level groups (the common case) are unaffected, since their direct
 and effective membership are the same.
+
+Known limitation: an inheritance/invited access path is expandable into the ancestor or
+invited group's per-level entitlements. If that group is not itself in the connector's
+sync scope (for example, the token can see the share but the group is not returned as a
+top-level synced resource), the expandable grant has nothing to resolve into. This is
+non-destructive — the path simply does not expand — but the members reached only through
+that group will not surface until the group is in scope.
 
 ## Connector credentials
 

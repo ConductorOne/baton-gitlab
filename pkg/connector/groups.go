@@ -2,9 +2,7 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -301,7 +299,7 @@ func (o *groupBuilder) Grant(
 
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
-		l.Warn("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
+		l.Debug("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
 		ut, err := resourceSdk.GetUserTrait(principal)
 		if err != nil {
 			return nil, fmt.Errorf("baton-gitlab: error getting user trait: %w", err)
@@ -336,14 +334,13 @@ func (o *groupBuilder) Grant(
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		var errResp *client.ErrorResponse
-		if errors.As(err, &errResp) {
-			if errResp.Response != nil && errResp.Response.StatusCode == http.StatusConflict {
-				return annotations.New(&v2.GrantAlreadyExists{}), nil
-			}
-			if strings.Contains(err.Error(), "should be greater than or equal to") {
-				return annotations.New(&v2.GrantAlreadyExists{}), nil
-			}
+		// Idempotency: GitLab returns 409 (uhttp → codes.AlreadyExists) when the user is
+		// already a member, and a 400 "should be greater than or equal to" when they already
+		// hold an equal/higher role. Both mean the desired grant already holds. (The gRPC
+		// code is checked directly because the hand-rolled *ErrorResponse never reaches the
+		// error chain for doRequest calls — uhttp errors on 4xx before CheckResponse runs.)
+		if isAlreadyExistsError(err) || strings.Contains(err.Error(), "should be greater than or equal to") {
+			return annotations.New(&v2.GrantAlreadyExists{}), nil
 		}
 		return outputAnnotations, fmt.Errorf("error adding user to group: %w", err)
 	}
@@ -364,7 +361,14 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		if errors.Is(err, client.ErrNotFound) {
+		if isNotFoundError(err) {
+			// With access-path labeling off (default), preserve the historical behavior:
+			// an absent direct membership is reported as already revoked. The effective-
+			// access check below only applies in access-path mode, so default-mode
+			// deployments see no provisioning behavior change.
+			if !o.client.SyncAccessPaths {
+				return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+			}
 			// Not a direct member. If the principal still has effective access, it is
 			// inherited/invited — reject instead of falsely reporting success (which
 			// would reappear next sync). Otherwise the membership is genuinely gone.
@@ -375,10 +379,11 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			switch {
 			case checkErr == nil && member != nil:
 				return outputAnnotations, revokeInheritedError("group", groupIdAndName)
-			case checkErr != nil && !errors.Is(checkErr, client.ErrNotFound):
+			case checkErr != nil && !isNotFoundError(checkErr):
 				return outputAnnotations, fmt.Errorf("error verifying group membership: %w", checkErr)
 			default:
-				return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
+				return outputAnnotations, nil
 			}
 		}
 		return outputAnnotations, fmt.Errorf("error removing user from group: %w", err)

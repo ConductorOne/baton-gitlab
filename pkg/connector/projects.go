@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -262,7 +263,7 @@ func (o *projectBuilder) Grant(
 	}
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
-		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+		return nil, status.Errorf(codes.InvalidArgument, "baton-gitlab: invalid user ID: %v", err)
 	}
 
 	memberRequest := &client.AddProjectMemberRequest{
@@ -274,6 +275,12 @@ func (o *projectBuilder) Grant(
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
+		// Idempotency: GitLab returns 409 (uhttp → codes.AlreadyExists) when the user is
+		// already a member, and a 400 "should be greater than or equal to" when they already
+		// hold an equal/higher role. Both mean the desired grant already holds.
+		if isAlreadyExistsError(err) || strings.Contains(err.Error(), "should be greater than or equal to") {
+			return annotations.New(&v2.GrantAlreadyExists{}), nil
+		}
 		return outputAnnotations, fmt.Errorf("error adding user to project: %w", err)
 	}
 
@@ -286,7 +293,7 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	projectId := grant.Entitlement.Resource.Id.Resource
 	userId, err := strconv.Atoi(grant.Principal.Id.Resource)
 	if err != nil {
-		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+		return nil, status.Errorf(codes.InvalidArgument, "baton-gitlab: invalid user ID: %v", err)
 	}
 
 	rateLimitDesc, err := o.client.RemoveProjectMember(ctx, projectId, strconv.Itoa(userId))
@@ -294,7 +301,14 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		if errors.Is(err, client.ErrNotFound) {
+		if isNotFoundError(err) {
+			// With access-path labeling off (default), preserve the historical behavior:
+			// an absent direct membership is reported as already revoked. The effective-
+			// access check below only applies in access-path mode, so default-mode
+			// deployments see no provisioning behavior change.
+			if !o.client.SyncAccessPaths {
+				return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+			}
 			// Not a direct member. If the principal still has effective access, it is
 			// inherited/invited — reject instead of falsely reporting success (which
 			// would reappear next sync). Otherwise the membership is genuinely gone.
@@ -305,10 +319,11 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			switch {
 			case checkErr == nil && member != nil:
 				return outputAnnotations, revokeInheritedError("project", projectId)
-			case checkErr != nil && !errors.Is(checkErr, client.ErrNotFound):
+			case checkErr != nil && !isNotFoundError(checkErr):
 				return outputAnnotations, fmt.Errorf("error verifying project membership: %w", checkErr)
 			default:
-				return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
+				return outputAnnotations, nil
 			}
 		}
 		return outputAnnotations, fmt.Errorf("error removing user from project: %w", err)
