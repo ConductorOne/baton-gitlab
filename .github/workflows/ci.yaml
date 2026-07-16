@@ -1,6 +1,10 @@
 name: Test Baton Gitlab Integration
 
-on: pull_request
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   go-lint:
@@ -190,6 +194,7 @@ jobs:
 #            jq --exit-status ".grants[].principal.id.resource == \"${{ env.USER_ID }}\""
 
   test-cloud-version:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     env:
       BATON_LOG_LEVEL: debug
