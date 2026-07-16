@@ -146,5 +146,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.50.0 // indirect
 )
-
-replace gitlab.com/gitlab-org/api/client-go => gitlab.com/jirwin/client-go v0.123.1-0.20250228021302-c3f0af7d3169

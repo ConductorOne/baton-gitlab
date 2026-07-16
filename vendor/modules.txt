@@ -992,4 +992,3 @@ modernc.org/memory
 modernc.org/sqlite
 modernc.org/sqlite/lib
 modernc.org/sqlite/vtab
-# gitlab.com/gitlab-org/api/client-go => gitlab.com/jirwin/client-go v0.123.1-0.20250228021302-c3f0af7d3169
