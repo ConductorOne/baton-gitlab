@@ -126,6 +126,12 @@
       "displayName": "Sync direct members only",
       "description": "When enabled, only sync direct members of groups and projects. Inherited members from parent groups will be excluded from membership grants.",
       "boolField": {}
+    },
+    {
+      "name": "sync-access-paths",
+      "displayName": "Sync access paths",
+      "description": "Label grants by access path (direct, inherited, or via an invited group). Disabled (default) keeps the previous flattened effective-membership grants.",
+      "boolField": {}
     }
   ],
   "displayName": "GitLab",

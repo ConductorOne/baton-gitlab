@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,6 +13,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -95,7 +96,23 @@ func (o *projectBuilder) Entitlements(ctx context.Context, resource *v2.Resource
 	return rv, "", nil, nil
 }
 
+// Grants dispatches on the SyncAccessPaths flag. With it disabled (default) the
+// connector emits flattened effective membership as before; with it enabled each
+// access path (direct, inherited from a parent group, or via an invited group) is
+// surfaced as a distinct expandable grant.
 func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	if o.client.SyncAccessPaths {
+		return o.grantsWithAccessPaths(ctx, resource, pToken)
+	}
+	return o.grantsFlattened(ctx, resource, pToken)
+}
+
+// grantsFlattened emits effective membership as flat direct grants plus a
+// parent-group expandable grant per member — the pre-access-path behavior, preserved
+// unchanged for existing customers. When SyncDirectMembersOnly is set, only direct
+// members are listed; otherwise the full effective set is flattened via
+// ListAllProjectMembers.
+func (o *projectBuilder) grantsFlattened(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 
@@ -151,6 +168,81 @@ func (o *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 	return outGrants, nextPageToken, outputAnnotations, nil
 }
 
+// grantsWithAccessPaths emits a project's direct members plus its indirect access
+// paths — inheritance from ancestor groups (up to and including the top-level group)
+// and access via invited (shared) groups — as expandable grants. It reuses the
+// existing per-access-level entitlements (no synthetic membership entitlement) and
+// emits paths only for levels that actually have members (no empty expansions).
+func (o *projectBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	var outGrants []*v2.Grant
+	var outputAnnotations = annotations.New()
+
+	var pageToken string
+	if pToken != nil {
+		pageToken = pToken.Token
+	}
+
+	users, nextPageToken, rateLimitDesc, err := o.client.ListProjectMembers(ctx, resource.Id.Resource, pageToken)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
+	if err != nil {
+		_, unhandledErr := handlePermissionError(ctx, err, "project", resource.Id.Resource)
+		if unhandledErr != nil {
+			return nil, "", outputAnnotations, unhandledErr
+		}
+		// Permission error listing members: skip direct members but still emit the
+		// pure-expansion indirect anchors below, which need no project member data.
+		users, nextPageToken = nil, ""
+	}
+
+	// Path 1: direct members.
+	for _, user := range users {
+		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
+		if err != nil {
+			return nil, "", outputAnnotations, fmt.Errorf("error creating principal ID: %w", err)
+		}
+		outGrants = append(outGrants, grant.NewGrant(
+			resource,
+			client.AccessLevelValue(user.AccessLevel).String(),
+			principalId,
+		))
+	}
+
+	// Indirect access paths, emitted once on the first page (unless direct-only).
+	if pageToken == "" && !o.client.SyncDirectMembersOnly {
+		// Path 2: inheritance from ancestor groups (immediate subgroup up to top-level).
+		if resource.ParentResourceId != nil {
+			inherited, err := accessPathInheritanceGrants(ctx, o.client, resource, resource.ParentResourceId, &outputAnnotations)
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			outGrants = append(outGrants, inherited...)
+		}
+
+		// Path 3: groups invited into this project.
+		project, rlDesc, err := o.client.GetProject(ctx, resource.Id.Resource)
+		if rlDesc != nil {
+			outputAnnotations.WithRateLimiting(rlDesc)
+		}
+		if err != nil {
+			_, unhandledErr := handlePermissionError(ctx, err, "project", resource.Id.Resource)
+			if unhandledErr != nil {
+				return nil, "", outputAnnotations, unhandledErr
+			}
+			// Permission error: skip invited-group grants and continue.
+		} else {
+			invited, err := accessPathInvitedProjectGrants(ctx, o.client, resource, project.SharedWithGroups, &outputAnnotations)
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			outGrants = append(outGrants, invited...)
+		}
+	}
+
+	return outGrants, nextPageToken, outputAnnotations, nil
+}
+
 func (o *projectBuilder) Grant(
 	ctx context.Context,
 	principal *v2.Resource,
@@ -171,7 +263,7 @@ func (o *projectBuilder) Grant(
 	}
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
-		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+		return nil, status.Errorf(codes.InvalidArgument, "baton-gitlab: invalid user ID: %v", err)
 	}
 
 	memberRequest := &client.AddProjectMemberRequest{
@@ -183,6 +275,12 @@ func (o *projectBuilder) Grant(
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
+		// Idempotency: GitLab returns 409 (uhttp → codes.AlreadyExists) when the user is
+		// already a member, and a 400 "should be greater than or equal to" when they already
+		// hold an equal/higher role. Both mean the desired grant already holds.
+		if isAlreadyExistsError(err) || isAlreadyAtOrAboveLevelError(err) {
+			return annotations.New(&v2.GrantAlreadyExists{}), nil
+		}
 		return outputAnnotations, fmt.Errorf("error adding user to project: %w", err)
 	}
 
@@ -195,7 +293,7 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	projectId := grant.Entitlement.Resource.Id.Resource
 	userId, err := strconv.Atoi(grant.Principal.Id.Resource)
 	if err != nil {
-		return nil, fmt.Errorf("error converting user ID to int: %w", err)
+		return nil, status.Errorf(codes.InvalidArgument, "baton-gitlab: invalid user ID: %v", err)
 	}
 
 	rateLimitDesc, err := o.client.RemoveProjectMember(ctx, projectId, strconv.Itoa(userId))
@@ -203,8 +301,33 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		if errors.Is(err, client.ErrNotFound) {
-			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+		if isNotFoundError(err) {
+			// With access-path labeling off (default), preserve the historical behavior:
+			// an absent direct membership is reported as already revoked. The effective-
+			// access check below only applies in access-path mode, so default-mode
+			// deployments see no provisioning behavior change.
+			if !o.client.SyncAccessPaths {
+				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
+				return outputAnnotations, nil
+			}
+			// Not a direct member. If the principal still has effective access, it is
+			// inherited/invited — reject instead of falsely reporting success (which
+			// would reappear next sync). Otherwise the membership is genuinely gone.
+			_, rlDesc, checkErr := o.client.GetProjectMemberAll(ctx, projectId, strconv.Itoa(userId))
+			if rlDesc != nil {
+				outputAnnotations.WithRateLimiting(rlDesc)
+			}
+			// GetProjectMemberAll always returns a non-nil member when checkErr is nil,
+			// so a nil-check would be dead here; keying on checkErr is sufficient.
+			switch {
+			case checkErr == nil:
+				return outputAnnotations, revokeInheritedError("project", projectId)
+			case !isNotFoundError(checkErr):
+				return outputAnnotations, fmt.Errorf("baton-gitlab: error verifying project membership: %w", checkErr)
+			default:
+				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
+				return outputAnnotations, nil
+			}
 		}
 		return outputAnnotations, fmt.Errorf("error removing user from project: %w", err)
 	}

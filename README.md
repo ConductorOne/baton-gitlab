@@ -48,6 +48,18 @@ To use this connector, you will need different things depending on which version
   because admin permissions are needed and in the cloud version they do not exist.
   https://docs.gitlab.com/api/users/
 
+- Optional access-path labeling (`--sync-access-paths`, disabled by default):
+  When enabled, grants are labeled by HOW access was obtained instead of a single
+  flattened list. Direct membership, inheritance from a parent/top-level group, and
+  access via an invited (shared) group each become a distinct, reviewable path
+  (expandable grants). The default output is unchanged — identical grant shape and
+  counts — so existing deployments are unaffected until they opt in. It reuses the
+  existing per-access-level entitlements (no new entitlements) and emits paths only
+  for access levels that actually have members (no empty expansions).
+  `--sync-direct-members-only` restricts the sync to direct members only and
+  suppresses the inherited/invited paths. See `docs/doc-info.md` for the full model
+  and its one known limitation.
+
 ## Where can I find my API Key?
 1- Log in gitlab.com o in your base url, then go to the top left, click on the user emoticon, a popup menu will open, click on edit profile.
 2- In the dashboard to the left of User settings, click on access tokens, and in the list of tokens that appears, click on add new token.
@@ -130,6 +142,8 @@ Flags:
       --otel-collector-endpoint string   The endpoint of the OpenTelemetry collector to send observability data to ($BATON_OTEL_COLLECTOR_ENDPOINT)
   -p, --provisioning                     This must be set in order for provisioning actions to be enabled ($BATON_PROVISIONING)
       --skip-full-sync                   This must be set to skip a full sync ($BATON_SKIP_FULL_SYNC)
+      --sync-access-paths                Label grants by access path (direct, inherited, or via an invited group). Disabled by default. ($BATON_SYNC_ACCESS_PATHS)
+      --sync-direct-members-only         When enabled, only sync direct members of groups and projects. ($BATON_SYNC_DIRECT_MEMBERS_ONLY)
       --ticketing                        This must be set to enable ticketing support ($BATON_TICKETING)
   -v, --version                          version for baton-gitlab
 

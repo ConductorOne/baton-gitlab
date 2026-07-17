@@ -2,9 +2,7 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -113,7 +111,22 @@ func (o *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ 
 	return rv, "", nil, nil
 }
 
+// Grants dispatches on the SyncAccessPaths flag. With it disabled (default) the
+// connector emits flattened effective membership as before; with it enabled each
+// access path (direct, inherited from a parent group, or via an invited group) is
+// surfaced as a distinct expandable grant.
 func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	if o.client.SyncAccessPaths {
+		return o.grantsWithAccessPaths(ctx, resource, pToken)
+	}
+	return o.grantsFlattened(ctx, resource, pToken)
+}
+
+// grantsFlattened emits effective membership as flat direct grants — the
+// pre-access-path behavior, preserved unchanged for existing customers. When
+// SyncDirectMembersOnly is set, only direct members are listed; otherwise the full
+// effective set (direct + inherited) is flattened via ListAllGroupMembers.
+func (o *groupBuilder) grantsFlattened(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var outGrants []*v2.Grant
 	var outputAnnotations = annotations.New()
 	var users []*client.GroupMember
@@ -165,6 +178,85 @@ func (o *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	return outGrants, nextPageToken, outputAnnotations, nil
 }
 
+// grantsWithAccessPaths emits a group's direct members plus its indirect access
+// paths — inheritance from ancestor groups and access via invited (shared) groups —
+// as expandable grants, so each path stays distinct and reviewable in C1. It reuses
+// the existing per-access-level entitlements (no synthetic membership entitlement)
+// and emits paths only for levels that actually have members (no empty expansions).
+func (o *groupBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	var outGrants []*v2.Grant
+	var outputAnnotations = annotations.New()
+
+	var pageToken string
+	if pToken != nil {
+		pageToken = pToken.Token
+	}
+
+	groupId, err := fromGroupResourceId(resource.Id.Resource)
+	if err != nil {
+		return nil, "", nil, fmt.Errorf("error parsing group resource id: %w", err)
+	}
+
+	users, nextPageToken, rateLimitDesc, err := o.client.ListGroupMembers(ctx, groupId, pageToken)
+	if rateLimitDesc != nil {
+		outputAnnotations.WithRateLimiting(rateLimitDesc)
+	}
+	if err != nil {
+		_, unhandledErr := handlePermissionError(ctx, err, "group", groupId)
+		if unhandledErr != nil {
+			return nil, "", outputAnnotations, unhandledErr
+		}
+		// Permission error listing members: skip direct members but still emit the
+		// pure-expansion indirect anchors below, which need no member data of this group.
+		users, nextPageToken = nil, ""
+	}
+
+	// Path 1/2: direct members.
+	for _, user := range users {
+		principalId, err := resourceSdk.NewResourceID(userResourceType, user.ID)
+		if err != nil {
+			return nil, "", outputAnnotations, fmt.Errorf("error creating principal ID: %w", err)
+		}
+		outGrants = append(outGrants, grant.NewGrant(
+			resource,
+			client.AccessLevelValue(user.AccessLevel).String(),
+			principalId,
+		))
+	}
+
+	// Indirect access paths, emitted once on the first page (unless direct-only).
+	if pageToken == "" && !o.client.SyncDirectMembersOnly {
+		if resource.ParentResourceId != nil {
+			inherited, err := accessPathInheritanceGrants(ctx, o.client, resource, resource.ParentResourceId, &outputAnnotations)
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			outGrants = append(outGrants, inherited...)
+		}
+
+		group, rlDesc, err := o.client.GetGroup(ctx, groupId)
+		if rlDesc != nil {
+			outputAnnotations.WithRateLimiting(rlDesc)
+		}
+		if err != nil {
+			_, unhandledErr := handlePermissionError(ctx, err, "group", groupId)
+			if unhandledErr != nil {
+				return nil, "", outputAnnotations, unhandledErr
+			}
+			// Permission error: skip invited-group grants and continue.
+		} else {
+			// Path 4: groups invited into this group (group→group = direct members).
+			invited, err := accessPathInvitedGrants(ctx, o.client, resource, group.SharedWithGroups, &outputAnnotations)
+			if err != nil {
+				return nil, "", outputAnnotations, err
+			}
+			outGrants = append(outGrants, invited...)
+		}
+	}
+
+	return outGrants, nextPageToken, outputAnnotations, nil
+}
+
 func (o *groupBuilder) Grant(
 	ctx context.Context,
 	principal *v2.Resource,
@@ -207,7 +299,7 @@ func (o *groupBuilder) Grant(
 
 	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
-		l.Warn("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
+		l.Debug("baton-gitlab grant: unable to parse user ID. falling back to email invite", zap.Error(err))
 		ut, err := resourceSdk.GetUserTrait(principal)
 		if err != nil {
 			return nil, fmt.Errorf("baton-gitlab: error getting user trait: %w", err)
@@ -242,14 +334,13 @@ func (o *groupBuilder) Grant(
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		var errResp *client.ErrorResponse
-		if errors.As(err, &errResp) {
-			if errResp.Response != nil && errResp.Response.StatusCode == http.StatusConflict {
-				return annotations.New(&v2.GrantAlreadyExists{}), nil
-			}
-			if strings.Contains(err.Error(), "should be greater than or equal to") {
-				return annotations.New(&v2.GrantAlreadyExists{}), nil
-			}
+		// Idempotency: GitLab returns 409 (uhttp → codes.AlreadyExists) when the user is
+		// already a member, and a 400 "should be greater than or equal to" when they already
+		// hold an equal/higher role. Both mean the desired grant already holds. (The gRPC
+		// code is checked directly because the hand-rolled *ErrorResponse never reaches the
+		// error chain for doRequest calls — uhttp errors on 4xx before CheckResponse runs.)
+		if isAlreadyExistsError(err) || isAlreadyAtOrAboveLevelError(err) {
+			return annotations.New(&v2.GrantAlreadyExists{}), nil
 		}
 		return outputAnnotations, fmt.Errorf("error adding user to group: %w", err)
 	}
@@ -270,8 +361,33 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		outputAnnotations.WithRateLimiting(rateLimitDesc)
 	}
 	if err != nil {
-		if errors.Is(err, client.ErrNotFound) {
-			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+		if isNotFoundError(err) {
+			// With access-path labeling off (default), preserve the historical behavior:
+			// an absent direct membership is reported as already revoked. The effective-
+			// access check below only applies in access-path mode, so default-mode
+			// deployments see no provisioning behavior change.
+			if !o.client.SyncAccessPaths {
+				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
+				return outputAnnotations, nil
+			}
+			// Not a direct member. If the principal still has effective access, it is
+			// inherited/invited — reject instead of falsely reporting success (which
+			// would reappear next sync). Otherwise the membership is genuinely gone.
+			_, rlDesc, checkErr := o.client.GetGroupMemberAll(ctx, groupId, grant.Principal.Id.Resource)
+			if rlDesc != nil {
+				outputAnnotations.WithRateLimiting(rlDesc)
+			}
+			// GetGroupMemberAll always returns a non-nil member when checkErr is nil,
+			// so a nil-check would be dead here; keying on checkErr is sufficient.
+			switch {
+			case checkErr == nil:
+				return outputAnnotations, revokeInheritedError("group", groupIdAndName)
+			case !isNotFoundError(checkErr):
+				return outputAnnotations, fmt.Errorf("baton-gitlab: error verifying group membership: %w", checkErr)
+			default:
+				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
+				return outputAnnotations, nil
+			}
 		}
 		return outputAnnotations, fmt.Errorf("error removing user from group: %w", err)
 	}

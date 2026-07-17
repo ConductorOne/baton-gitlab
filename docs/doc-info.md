@@ -37,6 +37,56 @@ While developing the connector, please fill out this form. This information is n
    — Group entitlements for Users 
    — Project entitlements for Users
 
+## Access-path labeling (--sync-access-paths, opt-in)
+
+By default the connector emits effective membership as flattened direct grants: a
+user who can access a group/project shows up as a single grant, regardless of
+whether that access is direct, inherited from a parent group, or granted through an
+invited (shared) group. All paths look the same.
+
+When `--sync-access-paths` is enabled, each way a principal obtained access is
+surfaced as its own expandable grant, so the access path is visible and reviewable:
+
+  - Direct membership — a plain user grant on the resource's access-level entitlement.
+  - Inheritance from a parent/top-level group — one expandable grant per ancestor
+    group and per access level that ancestor actually has members at, with the
+    ancestor group as principal, expanding into that group's matching per-level
+    entitlement. Each ancestor (immediate subgroup up to the top-level group) is a
+    distinct path, so a top-level group member is shown as having access to nested
+    projects through the top-level group specifically.
+  - Access via an invited (shared) group. For a group target, the invited group is the
+    principal on the target, expanding into the invited group's per-level entitlements —
+    group→group sharing confers access to the invited group's direct members only. For a
+    project target, group→project sharing also confers access to the invited group's
+    inherited members, so each effective member (direct or inherited) is emitted as a
+    user-principal grant. Either way GitLab caps a shared member's effective access at
+    min(their level in the invited group, the share's access level); the connector
+    applies that cap, so no member is shown at a higher level than GitLab actually grants.
+
+Design notes:
+  - Expandable grants use Shallow=true: each grant is a single, crisp hop, and the
+    ConductorOne platform resolves deeper nesting by walking the connected edges.
+  - No new entitlements are added — the model reuses the existing per-access-level
+    entitlements, and only emits paths for access levels that actually have members,
+    so no grant expands to an empty set.
+  - Inherited and invited (shared) paths are attribution-only: their grants are marked
+    immutable, so the platform never offers a direct revoke of access that
+    is really held elsewhere. Revoking such access at the target is rejected
+    (InvalidArgument) and points at its source group, since removing a non-existent
+    direct membership is a no-op that would reappear on the next sync. Direct
+    memberships revoke normally.
+  - The default (flag off) output is unchanged (identical grant shape and counts),
+    so existing deployments are unaffected until they opt in.
+  - `--sync-direct-members-only` still applies: with it set, only direct members are
+    synced and the inheritance/invited paths are not emitted.
+
+Known limitation: an inheritance/invited access path is expandable into the ancestor or
+invited group's per-level entitlements. If that group is not itself in the connector's
+sync scope (for example, the token can see the share but the group is not returned as a
+top-level synced resource), the expandable grant has nothing to resolve into. This is
+non-destructive — the path simply does not expand — but the members reached only through
+that group will not surface until the group is in scope.
+
 ## Connector credentials
 
 1. What credentials or information are needed to set up the connector? (For example, API key, client ID and secret, domain, etc.)

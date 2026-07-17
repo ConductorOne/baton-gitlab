@@ -420,6 +420,8 @@ github.com/golang/protobuf/ptypes/timestamp
 # github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e
 ## explicit
 github.com/golang/snappy
+# github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e
+## explicit; go 1.23
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
@@ -730,6 +732,8 @@ go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/logs/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
+# go.uber.org/goleak v1.3.0
+## explicit; go 1.20
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
@@ -947,6 +951,8 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
+# modernc.org/fileutil v1.4.0
+## explicit; go 1.24
 # modernc.org/libc v1.72.0
 ## explicit; go 1.25.0
 modernc.org/libc
@@ -986,4 +992,3 @@ modernc.org/memory
 modernc.org/sqlite
 modernc.org/sqlite/lib
 modernc.org/sqlite/vtab
-# gitlab.com/gitlab-org/api/client-go => gitlab.com/jirwin/client-go v0.123.1-0.20250228021302-c3f0af7d3169

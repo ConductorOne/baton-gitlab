@@ -30,6 +30,11 @@ var (
 		field.WithDisplayName("Sync direct members only"),
 		field.WithDescription("When enabled, only sync direct members of groups and projects. Inherited members from parent groups will be excluded from membership grants."),
 	)
+	SyncAccessPaths = field.BoolField(
+		"sync-access-paths",
+		field.WithDisplayName("Sync access paths"),
+		field.WithDescription("Label grants by access path (direct, inherited, or via an invited group). Disabled (default) keeps the previous flattened effective-membership grants."),
+	)
 
 	// ConfigurationFields defines the external configuration required for the
 	// connector to run. Note: these fields can be marked as optional or
@@ -39,6 +44,7 @@ var (
 		BaseURL,
 		AccountCreationGroup,
 		SyncDirectMembersOnly,
+		SyncAccessPaths,
 	}
 
 	// FieldRelationships defines relationships between the fields listed in
