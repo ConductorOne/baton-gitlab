@@ -77,6 +77,16 @@ func isAlreadyExistsError(err error) bool {
 	return status.Code(err) == codes.AlreadyExists
 }
 
+// isAlreadyAtOrAboveLevelError reports whether err is GitLab's 400 rejection raised when
+// the user already holds an equal or higher role than the one being granted ("access level
+// should be greater than or equal to ..."). Like a 409, this means the desired grant already
+// holds, so it is treated as idempotent success. Matched by message text because GitLab does
+// not expose a distinct status code for it; centralized so a GitLab wording change is fixed
+// in one place for both groups and projects.
+func isAlreadyAtOrAboveLevelError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "should be greater than or equal to")
+}
+
 func handlePermissionError(ctx context.Context, err error, resourceType, resourceId string) (bool, error) {
 	if err == nil {
 		return false, nil

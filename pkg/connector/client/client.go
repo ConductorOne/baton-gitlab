@@ -193,9 +193,10 @@ func (c *GitlabClient) ListAllGroupMembers(ctx context.Context, groupID string, 
 }
 
 // GetGroupMemberAll retrieves a single member of a group including inherited and
-// invited (shared) members (GET /groups/:id/members/all/:user_id). Returns
-// ErrNotFound when the user has no effective access to the group. Used to tell a
-// direct membership apart from inherited/invited access on revoke.
+// invited (shared) members (GET /groups/:id/members/all/:user_id). Returns a gRPC
+// NotFound status (not the ErrNotFound sentinel — doRequest surfaces uhttp's 4xx
+// error before CheckResponse runs) when the user has no effective access to the
+// group. Used to tell a direct membership apart from inherited/invited access on revoke.
 func (c *GitlabClient) GetGroupMemberAll(ctx context.Context, groupID, userID string) (*GroupMember, *v2.RateLimitDescription, error) {
 	var member GroupMember
 
@@ -350,9 +351,10 @@ func (c *GitlabClient) ListAllProjectMembers(ctx context.Context, projectID stri
 }
 
 // GetProjectMemberAll retrieves a single member of a project including inherited and
-// invited (shared) members (GET /projects/:id/members/all/:user_id). Returns
-// ErrNotFound when the user has no effective access to the project. Used to tell a
-// direct membership apart from inherited/invited access on revoke.
+// invited (shared) members (GET /projects/:id/members/all/:user_id). Returns a gRPC
+// NotFound status (not the ErrNotFound sentinel — doRequest surfaces uhttp's 4xx
+// error before CheckResponse runs) when the user has no effective access to the
+// project. Used to tell a direct membership apart from inherited/invited access on revoke.
 func (c *GitlabClient) GetProjectMemberAll(ctx context.Context, projectID, userID string) (*ProjectMember, *v2.RateLimitDescription, error) {
 	var member ProjectMember
 

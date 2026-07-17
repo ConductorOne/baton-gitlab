@@ -339,7 +339,7 @@ func (o *groupBuilder) Grant(
 		// hold an equal/higher role. Both mean the desired grant already holds. (The gRPC
 		// code is checked directly because the hand-rolled *ErrorResponse never reaches the
 		// error chain for doRequest calls — uhttp errors on 4xx before CheckResponse runs.)
-		if isAlreadyExistsError(err) || strings.Contains(err.Error(), "should be greater than or equal to") {
+		if isAlreadyExistsError(err) || isAlreadyAtOrAboveLevelError(err) {
 			return annotations.New(&v2.GrantAlreadyExists{}), nil
 		}
 		return outputAnnotations, fmt.Errorf("error adding user to group: %w", err)
@@ -372,15 +372,17 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			// Not a direct member. If the principal still has effective access, it is
 			// inherited/invited — reject instead of falsely reporting success (which
 			// would reappear next sync). Otherwise the membership is genuinely gone.
-			member, rlDesc, checkErr := o.client.GetGroupMemberAll(ctx, groupId, grant.Principal.Id.Resource)
+			_, rlDesc, checkErr := o.client.GetGroupMemberAll(ctx, groupId, grant.Principal.Id.Resource)
 			if rlDesc != nil {
 				outputAnnotations.WithRateLimiting(rlDesc)
 			}
+			// GetGroupMemberAll always returns a non-nil member when checkErr is nil,
+			// so a nil-check would be dead here; keying on checkErr is sufficient.
 			switch {
-			case checkErr == nil && member != nil:
+			case checkErr == nil:
 				return outputAnnotations, revokeInheritedError("group", groupIdAndName)
-			case checkErr != nil && !isNotFoundError(checkErr):
-				return outputAnnotations, fmt.Errorf("error verifying group membership: %w", checkErr)
+			case !isNotFoundError(checkErr):
+				return outputAnnotations, fmt.Errorf("baton-gitlab: error verifying group membership: %w", checkErr)
 			default:
 				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
 				return outputAnnotations, nil

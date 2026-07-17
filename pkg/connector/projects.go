@@ -278,7 +278,7 @@ func (o *projectBuilder) Grant(
 		// Idempotency: GitLab returns 409 (uhttp → codes.AlreadyExists) when the user is
 		// already a member, and a 400 "should be greater than or equal to" when they already
 		// hold an equal/higher role. Both mean the desired grant already holds.
-		if isAlreadyExistsError(err) || strings.Contains(err.Error(), "should be greater than or equal to") {
+		if isAlreadyExistsError(err) || isAlreadyAtOrAboveLevelError(err) {
 			return annotations.New(&v2.GrantAlreadyExists{}), nil
 		}
 		return outputAnnotations, fmt.Errorf("error adding user to project: %w", err)
@@ -312,15 +312,17 @@ func (o *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			// Not a direct member. If the principal still has effective access, it is
 			// inherited/invited — reject instead of falsely reporting success (which
 			// would reappear next sync). Otherwise the membership is genuinely gone.
-			member, rlDesc, checkErr := o.client.GetProjectMemberAll(ctx, projectId, strconv.Itoa(userId))
+			_, rlDesc, checkErr := o.client.GetProjectMemberAll(ctx, projectId, strconv.Itoa(userId))
 			if rlDesc != nil {
 				outputAnnotations.WithRateLimiting(rlDesc)
 			}
+			// GetProjectMemberAll always returns a non-nil member when checkErr is nil,
+			// so a nil-check would be dead here; keying on checkErr is sufficient.
 			switch {
-			case checkErr == nil && member != nil:
+			case checkErr == nil:
 				return outputAnnotations, revokeInheritedError("project", projectId)
-			case checkErr != nil && !isNotFoundError(checkErr):
-				return outputAnnotations, fmt.Errorf("error verifying project membership: %w", checkErr)
+			case !isNotFoundError(checkErr):
+				return outputAnnotations, fmt.Errorf("baton-gitlab: error verifying project membership: %w", checkErr)
 			default:
 				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
 				return outputAnnotations, nil
