@@ -54,11 +54,14 @@ surfaced as its own expandable grant, so the access path is visible and reviewab
     entitlement. Each ancestor (immediate subgroup up to the top-level group) is a
     distinct path, so a top-level group member is shown as having access to nested
     projects through the top-level group specifically.
-  - Access via an invited (shared) group — the invited group as principal on the
-    target, expanding into the invited group's per-level entitlements. GitLab caps a
-    shared member's effective access at min(their level in the invited group, the
-    share's access level); the connector applies that cap per level, so no member is
-    shown at a higher level than GitLab actually grants.
+  - Access via an invited (shared) group. For a group target, the invited group is the
+    principal on the target, expanding into the invited group's per-level entitlements —
+    group→group sharing confers access to the invited group's direct members only. For a
+    project target, group→project sharing also confers access to the invited group's
+    inherited members, so each effective member (direct or inherited) is emitted as a
+    user-principal grant. Either way GitLab caps a shared member's effective access at
+    min(their level in the invited group, the share's access level); the connector
+    applies that cap, so no member is shown at a higher level than GitLab actually grants.
 
 Design notes:
   - Expandable grants use Shallow=true: each grant is a single, crisp hop, and the
@@ -66,8 +69,8 @@ Design notes:
   - No new entitlements are added — the model reuses the existing per-access-level
     entitlements, and only emits paths for access levels that actually have members,
     so no grant expands to an empty set.
-  - Inherited and invited (shared) paths are attribution-only: their expandable grants
-    are marked immutable, so the platform never offers a direct revoke of access that
+  - Inherited and invited (shared) paths are attribution-only: their grants are marked
+    immutable, so the platform never offers a direct revoke of access that
     is really held elsewhere. Revoking such access at the target is rejected
     (InvalidArgument) and points at its source group, since removing a non-existent
     direct membership is a no-op that would reappear on the next sync. Direct
@@ -76,12 +79,6 @@ Design notes:
     so existing deployments are unaffected until they opt in.
   - `--sync-direct-members-only` still applies: with it set, only direct members are
     synced and the inheritance/invited paths are not emitted.
-
-Known limitation: GitLab group→project sharing also grants access to the invited
-group's inherited members. When the invited group is itself a subgroup, those
-inherited members are surfaced via their own group's path rather than the invited
-path. Invited top-level groups (the common case) are unaffected, since their direct
-and effective membership are the same.
 
 Known limitation: an inheritance/invited access path is expandable into the ancestor or
 invited group's per-level entitlements. If that group is not itself in the connector's

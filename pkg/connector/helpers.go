@@ -263,6 +263,29 @@ func allDirectGroupMembers(ctx context.Context, c *client.GitlabClient, groupID 
 	}
 }
 
+// allEffectiveGroupMembers pages through a group's effective members — direct plus
+// inherited (GET /groups/:id/members/all) — accumulating rate-limit annotations. Used
+// for group→project invited access, which confers on the invited group's inherited
+// members too, not just its direct ones.
+func allEffectiveGroupMembers(ctx context.Context, c *client.GitlabClient, groupID string, annos *annotations.Annotations) ([]*client.GroupMember, error) {
+	var all []*client.GroupMember
+	pageToken := ""
+	for {
+		members, next, rateLimitDesc, err := c.ListAllGroupMembers(ctx, groupID, pageToken)
+		if rateLimitDesc != nil {
+			annos.WithRateLimiting(rateLimitDesc)
+		}
+		if err != nil {
+			return all, err
+		}
+		all = append(all, members...)
+		if next == "" {
+			return all, nil
+		}
+		pageToken = next
+	}
+}
+
 // accessPathInheritanceGrants walks the target's ancestor group chain and emits, per
 // ancestor, "access via <ancestor> membership" expandable grants for the levels that
 // ancestor actually has direct members at. Together the per-ancestor edges surface
@@ -309,12 +332,12 @@ func accessPathInheritanceGrants(ctx context.Context, c *client.GitlabClient, ta
 	return grants, nil
 }
 
-// accessPathInvitedGrants resolves each invited (shared) group's direct members and
-// emits the invited-group access paths for the target. GitLab group→group sharing
-// confers access only to the invited group's direct members; group→project sharing
-// also confers it to the invited group's inherited members, so for an invited
-// *subgroup* shared into a project those inherited members are surfaced via their own
-// group's path rather than this one (see docs/doc-info.md).
+// accessPathInvitedGrants resolves each invited (shared) group's DIRECT members and emits
+// group-as-principal expandable grants for a GROUP target. GitLab group→group sharing
+// confers access only to the invited group's direct members, so direct enumeration is
+// correct here. For a PROJECT target use accessPathInvitedProjectGrants instead —
+// group→project sharing also confers access to the invited group's inherited members
+// (see docs/doc-info.md).
 func accessPathInvitedGrants(ctx context.Context, c *client.GitlabClient, target *v2.Resource, shared []client.SharedGroup, annos *annotations.Annotations) ([]*v2.Grant, error) {
 	if len(shared) == 0 {
 		return nil, nil
@@ -335,4 +358,54 @@ func accessPathInvitedGrants(ctx context.Context, c *client.GitlabClient, target
 		membersByGroup[sg.GroupID] = members
 	}
 	return invitedGroupGrants(target, shared, membersByGroup), nil
+}
+
+// accessPathInvitedProjectGrants emits grants for groups invited (shared) into a project.
+// GitLab group→project sharing confers access to the invited group's EFFECTIVE members —
+// direct AND inherited — each capped at min(memberLevel, shareLevel). Emitted as
+// user-principal grants (marked immutable: the access is removed by un-sharing or editing
+// the invited group, not at the project), so an inherited member whose level has no direct
+// member in the invited group is not dropped (the group→group path only covers directs).
+func accessPathInvitedProjectGrants(ctx context.Context, c *client.GitlabClient, target *v2.Resource, shared []client.SharedGroup, annos *annotations.Annotations) ([]*v2.Grant, error) {
+	if len(shared) == 0 {
+		return nil, nil
+	}
+	var grants []*v2.Grant
+	for _, sg := range shared {
+		share := client.AccessLevelValue(sg.GroupAccessLevel)
+		members, err := allEffectiveGroupMembers(ctx, c, strconv.Itoa(sg.GroupID), annos)
+		if err != nil {
+			isPermissionError, unhandledErr := handlePermissionError(ctx, err, "group", strconv.Itoa(sg.GroupID))
+			if unhandledErr != nil {
+				return nil, unhandledErr
+			}
+			if isPermissionError {
+				continue
+			}
+		}
+		for _, m := range members {
+			lvl := client.AccessLevelValue(m.AccessLevel)
+			// A level outside GitLab's defined set has no entitlement slug; skip it so we
+			// never build a grant on an empty-slug entitlement.
+			if lvl < client.MinimalAccessPermissions || lvl > client.OwnerPermissions || lvl.String() == "" {
+				continue
+			}
+			eff := lvl
+			if share >= client.MinimalAccessPermissions && share < eff {
+				eff = share
+			}
+			if eff.String() == "" {
+				continue
+			}
+			grants = append(grants, grant.NewGrant(
+				target,
+				eff.String(),
+				&v2.ResourceId{ResourceType: userResourceType.Id, Resource: strconv.Itoa(m.ID)},
+				// Invited-group access is not revocable at the target: it is removed by
+				// un-sharing or editing the invited group.
+				grant.WithAnnotation(&v2.GrantImmutable{}),
+			))
+		}
+	}
+	return grants, nil
 }

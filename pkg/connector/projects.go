@@ -232,7 +232,7 @@ func (o *projectBuilder) grantsWithAccessPaths(ctx context.Context, resource *v2
 			}
 			// Permission error: skip invited-group grants and continue.
 		} else {
-			invited, err := accessPathInvitedGrants(ctx, o.client, resource, project.SharedWithGroups, &outputAnnotations)
+			invited, err := accessPathInvitedProjectGrants(ctx, o.client, resource, project.SharedWithGroups, &outputAnnotations)
 			if err != nil {
 				return nil, "", outputAnnotations, err
 			}
