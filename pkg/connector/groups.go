@@ -367,7 +367,8 @@ func (o *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			// access check below only applies in access-path mode, so default-mode
 			// deployments see no provisioning behavior change.
 			if !o.client.SyncAccessPaths {
-				return annotations.New(&v2.GrantAlreadyRevoked{}), nil
+				outputAnnotations.Update(&v2.GrantAlreadyRevoked{})
+				return outputAnnotations, nil
 			}
 			// Not a direct member. If the principal still has effective access, it is
 			// inherited/invited — reject instead of falsely reporting success (which
