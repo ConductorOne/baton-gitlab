@@ -286,6 +286,27 @@ func allEffectiveGroupMembers(ctx context.Context, c *client.GitlabClient, group
 	}
 }
 
+// allDirectProjectMembers pages through a project's direct members, accumulating
+// rate-limit annotations. Used to dedupe invited-group grants against direct membership.
+func allDirectProjectMembers(ctx context.Context, c *client.GitlabClient, projectID string, annos *annotations.Annotations) ([]*client.ProjectMember, error) {
+	var all []*client.ProjectMember
+	pageToken := ""
+	for {
+		members, next, rateLimitDesc, err := c.ListProjectMembers(ctx, projectID, pageToken)
+		if rateLimitDesc != nil {
+			annos.WithRateLimiting(rateLimitDesc)
+		}
+		if err != nil {
+			return all, err
+		}
+		all = append(all, members...)
+		if next == "" {
+			return all, nil
+		}
+		pageToken = next
+	}
+}
+
 // accessPathInheritanceGrants walks the target's ancestor group chain and emits, per
 // ancestor, "access via <ancestor> membership" expandable grants for the levels that
 // ancestor actually has direct members at. Together the per-ancestor edges surface
@@ -370,6 +391,26 @@ func accessPathInvitedProjectGrants(ctx context.Context, c *client.GitlabClient,
 	if len(shared) == 0 {
 		return nil, nil
 	}
+	// A user who is a direct project member at a given level already has a revocable grant
+	// from the direct-members path. An immutable invited grant with the identical grant ID
+	// (target + entitlement + user) could override it and block a legitimate revoke, so we
+	// skip that exact collision — the direct membership wins. On a permission error we
+	// simply can't build the map; the direct-members path then emits no grants either, so
+	// there is nothing to collide with.
+	directLevel := make(map[int]client.AccessLevelValue)
+	directMembers, err := allDirectProjectMembers(ctx, c, target.Id.Resource, annos)
+	if err != nil {
+		if _, unhandledErr := handlePermissionError(ctx, err, "project", target.Id.Resource); unhandledErr != nil {
+			return nil, unhandledErr
+		}
+	}
+	for _, member := range directMembers {
+		directLevel[member.ID] = client.AccessLevelValue(member.AccessLevel)
+	}
+
+	// A user can be an effective member of more than one invited group that caps to the
+	// same level; emit their grant on that level once.
+	emitted := make(map[string]struct{})
 	var grants []*v2.Grant
 	for _, sg := range shared {
 		share := client.AccessLevelValue(sg.GroupAccessLevel)
@@ -383,8 +424,8 @@ func accessPathInvitedProjectGrants(ctx context.Context, c *client.GitlabClient,
 				continue
 			}
 		}
-		for _, m := range members {
-			lvl := client.AccessLevelValue(m.AccessLevel)
+		for _, member := range members {
+			lvl := client.AccessLevelValue(member.AccessLevel)
 			// A level outside GitLab's defined set has no entitlement slug; skip it so we
 			// never build a grant on an empty-slug entitlement.
 			if lvl < client.MinimalAccessPermissions || lvl > client.OwnerPermissions || lvl.String() == "" {
@@ -397,10 +438,20 @@ func accessPathInvitedProjectGrants(ctx context.Context, c *client.GitlabClient,
 			if eff.String() == "" {
 				continue
 			}
+			// Exact collision with a direct membership at the same level: the direct
+			// (revocable) grant is authoritative — skip the immutable invited duplicate.
+			if directLevel[member.ID] == eff {
+				continue
+			}
+			dedupeKey := fmt.Sprintf("%d:%s", member.ID, eff.String())
+			if _, ok := emitted[dedupeKey]; ok {
+				continue
+			}
+			emitted[dedupeKey] = struct{}{}
 			grants = append(grants, grant.NewGrant(
 				target,
 				eff.String(),
-				&v2.ResourceId{ResourceType: userResourceType.Id, Resource: strconv.Itoa(m.ID)},
+				&v2.ResourceId{ResourceType: userResourceType.Id, Resource: strconv.Itoa(member.ID)},
 				// Invited-group access is not revocable at the target: it is removed by
 				// un-sharing or editing the invited group.
 				grant.WithAnnotation(&v2.GrantImmutable{}),
