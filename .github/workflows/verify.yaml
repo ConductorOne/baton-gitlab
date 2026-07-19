@@ -9,6 +9,26 @@ on:
       - main
 
 jobs:
+  setup-artifacts:
+    name: Verify setup artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      - name: Verify setup artifacts
+        run: make verify-setup-artifacts
+
   verify:
     uses: ConductorOne/github-workflows/.github/workflows/verify.yaml@v4
     with:
