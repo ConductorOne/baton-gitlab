@@ -276,8 +276,8 @@ func (u *userBuilder) createCloudUser(
 			[]resourceSdk.UserTraitOption{
 				resourceSdk.WithEmail(email, true),
 				resourceSdk.WithUserLogin(email),
-				resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_DISABLED),
 			},
+			resourceSdk.WithResourceStatus(v2.Status_RESOURCE_STATUS_DISABLED, ""),
 		)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build pending user resource: %w", err)
@@ -447,20 +447,20 @@ func userResource(user any) (*v2.Resource, error) {
 			[]resourceSdk.UserTraitOption{
 				resourceSdk.WithEmail(email, true),
 				resourceSdk.WithUserLogin(email),
-				resourceSdk.WithUserProfile(profile),
-				resourceSdk.WithStatus(v2.UserTrait_Status_STATUS_DISABLED),
 			},
+			resourceSdk.WithResourceProfile(profile),
+			resourceSdk.WithResourceStatus(v2.Status_RESOURCE_STATUS_DISABLED, ""),
 		)
 	default:
 		return nil, fmt.Errorf("unknown user type: %T", user)
 	}
 
-	userStatus := v2.UserTrait_Status_STATUS_ENABLED
+	userStatus := v2.Status_RESOURCE_STATUS_ENABLED
 	switch state {
 	case "blocked", "deactivated", "ldap_blocked", "banned":
-		userStatus = v2.UserTrait_Status_STATUS_DISABLED
+		userStatus = v2.Status_RESOURCE_STATUS_DISABLED
 	case "pending":
-		userStatus = v2.UserTrait_Status_STATUS_UNSPECIFIED
+		userStatus = v2.Status_RESOURCE_STATUS_UNSPECIFIED
 		name = pendingInvitationUser + strings.ToLower(email)
 	}
 
@@ -479,8 +479,6 @@ func userResource(user any) (*v2.Resource, error) {
 
 	userTraitOptions := []resourceSdk.UserTraitOption{
 		resourceSdk.WithEmail(email, true),
-		resourceSdk.WithStatus(userStatus),
-		resourceSdk.WithUserProfile(profile),
 		resourceSdk.WithUserLogin(email),
 	}
 
@@ -493,6 +491,8 @@ func userResource(user any) (*v2.Resource, error) {
 		userResourceType,
 		id,
 		userTraitOptions,
+		resourceSdk.WithResourceProfile(profile),
+		resourceSdk.WithResourceStatus(userStatus, ""),
 	)
 }
 

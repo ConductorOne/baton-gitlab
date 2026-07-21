@@ -427,9 +427,8 @@ func groupResource(group *client.Group, parentResourceID *v2.ResourceId, isOnPre
 		group.FullName,
 		groupResourceType,
 		toGroupResourceId(strconv.Itoa(group.ID)),
-		[]resourceSdk.GroupTraitOption{
-			resourceSdk.WithGroupProfile(profile),
-		},
+		[]resourceSdk.GroupTraitOption{},
+		resourceSdk.WithResourceProfile(profile),
 		resourceSdk.WithAnnotation(annos...),
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)
