@@ -342,15 +342,14 @@ func projectResource(project *client.Project, parentResourceID *v2.ResourceId, i
 		project.NameWithNamespace,
 		projectResourceType,
 		project.ID,
-		[]resourceSdk.GroupTraitOption{
-			resourceSdk.WithGroupProfile(
-				map[string]interface{}{
-					"id":             project.ID,
-					profileFieldName: project.Name,
-					"description":    project.Description,
-				},
-			),
-		},
+		[]resourceSdk.GroupTraitOption{},
+		resourceSdk.WithResourceProfile(
+			map[string]interface{}{
+				"id":             project.ID,
+				profileFieldName: project.Name,
+				"description":    project.Description,
+			},
+		),
 		resourceSdk.WithAnnotation(annotations...),
 		resourceSdk.WithParentResourceID(parentResourceID),
 	)
