@@ -266,7 +266,7 @@ github.com/cockroachdb/swiss
 # github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06
 ## explicit; go 1.19
 github.com/cockroachdb/tokenbucket
-# github.com/conductorone/baton-sdk v0.18.4
+# github.com/conductorone/baton-sdk v0.19.0
 ## explicit; go 1.25.2
 github.com/conductorone/baton-sdk/internal/connector
 github.com/conductorone/baton-sdk/pb/c1/c1z/v1
@@ -296,6 +296,7 @@ github.com/conductorone/baton-sdk/pkg/dotc1z
 github.com/conductorone/baton-sdk/pkg/dotc1z/c1zstore
 github.com/conductorone/baton-sdk/pkg/dotc1z/engine/pebble
 github.com/conductorone/baton-sdk/pkg/dotc1z/engine/pebble/codec
+github.com/conductorone/baton-sdk/pkg/dotc1z/engine/pebble/internal/rawdb
 github.com/conductorone/baton-sdk/pkg/dotc1z/format/v3
 github.com/conductorone/baton-sdk/pkg/field
 github.com/conductorone/baton-sdk/pkg/healthcheck
@@ -420,8 +421,6 @@ github.com/golang/protobuf/ptypes/timestamp
 # github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e
 ## explicit
 github.com/golang/snappy
-# github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e
-## explicit; go 1.23
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
@@ -732,8 +731,6 @@ go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/logs/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
-# go.uber.org/goleak v1.3.0
-## explicit; go 1.20
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
@@ -951,8 +948,6 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# modernc.org/fileutil v1.4.0
-## explicit; go 1.24
 # modernc.org/libc v1.72.0
 ## explicit; go 1.25.0
 modernc.org/libc
