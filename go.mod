@@ -1,6 +1,6 @@
 module github.com/conductorone/baton-gitlab
 
-go 1.25.2
+go 1.25.13
 
 require (
 	github.com/conductorone/baton-sdk v0.24.2
