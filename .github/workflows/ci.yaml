@@ -125,9 +125,7 @@ jobs:
 #        run: go build ./cmd/baton-gitlab
 #
 #      - name: Install baton CLI
-#        run: |
-#          ./scripts/get-baton.sh
-#          sudo mv baton /usr/local/bin
+#        uses: ConductorOne/github-workflows/actions/get-baton@v4
 #
 #      - name: Export Baton env vars
 #        run: |
