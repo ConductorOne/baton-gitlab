@@ -125,9 +125,7 @@ jobs:
 #        run: go build ./cmd/baton-gitlab
 #
 #      - name: Install baton CLI
-#        run: |
-#          ./scripts/get-baton.sh
-#          sudo mv baton /usr/local/bin
+#        uses: ConductorOne/github-workflows/actions/get-baton@v4
 #
 #      - name: Export Baton env vars
 #        run: |
@@ -209,7 +207,7 @@ jobs:
         run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }}
 
       - name: Install baton
-        run: ./scripts/get-baton.sh && mv baton /usr/local/bin
+        uses: ConductorOne/github-workflows/actions/get-baton@v4
 
       - name: Grant entitlement Group
         run: ./baton-gitlab --access-token=${{ env.BATON_ACCESS_TOKEN }} --account-creation-group=${{ env.BATON_GITLAB_GROUP_FLAG }} --grant-entitlement=${{ env.GROUP_ENTITLEMENT }} --grant-principal=${{ env.PRINCIPAL }} --grant-principal-type=${{ env.PRINCIPAL_TYPE }}
