@@ -25,14 +25,21 @@ type ErrorResponse struct {
 	Message  string
 }
 
+// GitlabError is the body of a GitLab error response. Its "message" is a string
+// for most errors and an object of field errors for validation failures, such as
+// {"access_level":["should be greater than or equal to ..."]}.
 type GitlabError struct {
-	Detail string `json:"message"`
+	Detail json.RawMessage `json:"message"`
 }
 
 // Message implements the uhttp.ErrorResponse interface.
 func (e *GitlabError) Message() string {
-	if e.Detail != "" {
-		return e.Detail
+	var raw interface{}
+	if len(e.Detail) == 0 || json.Unmarshal(e.Detail, &raw) != nil || raw == nil {
+		return "Unknown error from Gitlab API"
+	}
+	if detail := parseError(raw); detail != "" {
+		return detail
 	}
 	return "Unknown error from Gitlab API"
 }
