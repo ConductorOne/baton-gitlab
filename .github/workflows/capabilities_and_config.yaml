@@ -30,16 +30,13 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Build
-        run: go build -o connector ./cmd/baton-gitlab
-
-      - name: Run and save config output
-        run: ./connector config > config_schema.json
+      - name: Generate setup artifacts
+        run: make generate-setup-artifacts
 
       - name: Run and save capabilities output
         env:
           BATON_ACCESS_TOKEN: "${{ secrets.BATON_ACCESS_TOKEN }}"
-        run: ./connector capabilities --access-token=access_token --base-url=base_url --account-creation-group=group > baton_capabilities.json
+        run: ./dist/linux_amd64/baton-gitlab capabilities --access-token=access_token --base-url=base_url --account-creation-group=group > baton_capabilities.json
 
       - name: Commit changes
         uses: EndBug/add-and-commit@v9
@@ -47,5 +44,6 @@ jobs:
           default_author: github_actions
           message: 'Updating baton config schema and capabilities.'
           add: |
+            pkg/config/conf.gen.go
             config_schema.json
             baton_capabilities.json
