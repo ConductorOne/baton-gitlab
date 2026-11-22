@@ -15,6 +15,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/crypto"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	resourceSdk "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -189,6 +191,11 @@ func (u *userBuilder) createOnPremUser(
 
 	user, _, err := u.client.CreateUser(ctx, createUserOpts)
 	if err != nil {
+		if client.IsEmailTakenConflict(err) {
+			// The generated password was not set on the existing user, so it is
+			// never returned on this path.
+			return u.existingAccount(ctx, *createUserOpts.Email)
+		}
 		return nil, nil, nil, err
 	}
 
@@ -202,6 +209,66 @@ func (u *userBuilder) createOnPremUser(
 	}
 
 	return car, []*v2.PlaintextData{{Bytes: []byte(generatedPassword)}}, nil, nil
+}
+
+// existingAccount finds the user that already holds email after a create
+// conflict and returns it as an already-exists result, without modifying it.
+// It binds only an active, human user whose primary email matches exactly;
+// anything else is reported as AlreadyExists rather than guessed.
+func (u *userBuilder) existingAccount(
+	ctx context.Context,
+	email string,
+) (
+	connectorbuilder.CreateAccountResponse,
+	[]*v2.PlaintextData,
+	annotations.Annotations,
+	error,
+) {
+	outputAnnotations := annotations.New()
+	var match *client.User
+	nextPageToken := ""
+	for {
+		users, next, rateLimitDesc, err := u.client.SearchUsers(ctx, email, nextPageToken)
+		if rateLimitDesc != nil {
+			outputAnnotations.WithRateLimiting(rateLimitDesc)
+		}
+		if err != nil {
+			return nil, nil, outputAnnotations, fmt.Errorf("baton-gitlab: failed to look up existing user after create conflict: %w", err)
+		}
+		for _, user := range users {
+			// GitLab search also matches secondary emails, which the API does not
+			// return; only the primary email identifies the user unambiguously.
+			if user == nil || !strings.EqualFold(user.Email, email) {
+				continue
+			}
+			// Offset pages can shift during the scan, so the same user may repeat.
+			if match != nil && match.ID != user.ID {
+				return nil, nil, outputAnnotations, status.Error(codes.AlreadyExists, "baton-gitlab: create user conflict: multiple users match the requested email")
+			}
+			match = user
+		}
+		if next == "" || next == nextPageToken {
+			break
+		}
+		nextPageToken = next
+	}
+
+	switch {
+	case match == nil:
+		return nil, nil, outputAnnotations, status.Error(codes.AlreadyExists,
+			"baton-gitlab: create user conflict: the email is already taken, but no visible user has it as primary email")
+	case match.Bot:
+		return nil, nil, outputAnnotations, status.Error(codes.AlreadyExists, "baton-gitlab: create user conflict: the email belongs to a bot user")
+	case match.State != "active":
+		return nil, nil, outputAnnotations, status.Errorf(codes.AlreadyExists,
+			"baton-gitlab: create user conflict: the email belongs to a user in state %q", match.State)
+	}
+
+	res, err := userResource(match)
+	if err != nil {
+		return nil, nil, outputAnnotations, fmt.Errorf("baton-gitlab: failed to build existing user resource: %w", err)
+	}
+	return &v2.CreateAccountResponse_AlreadyExistsResult{Resource: res}, nil, outputAnnotations, nil
 }
 
 func (u *userBuilder) createCloudUser(

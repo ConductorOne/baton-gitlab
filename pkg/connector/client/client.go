@@ -87,6 +87,10 @@ func (c *GitlabClient) doRequest(ctx context.Context, method string, endpoint st
 
 	response, err := c.httpClient.Do(request, doOptions...)
 	if err != nil {
+		if response != nil {
+			_ = response.Body.Close()
+			return nil, nil, &APIError{StatusCode: response.StatusCode, gitlabError: errorResponse, err: err}
+		}
 		return nil, nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() {
@@ -130,6 +134,23 @@ func (c *GitlabClient) CreateUser(ctx context.Context, userRequest *CreateUserOp
 	}
 
 	return &user, rateLimitDesc, nil
+}
+
+// SearchUsers lists users matching search (GET /users?search=), one page at a time.
+// For administrators GitLab also matches exact primary and secondary emails, so
+// callers must verify the returned email themselves.
+func (c *GitlabClient) SearchUsers(ctx context.Context, search string, nextPageToken string) ([]*User, string, *v2.RateLimitDescription, error) {
+	var users []*User
+
+	apiURL, _ := url.Parse("/api/v4/users")
+	WithSearch(apiURL, search)
+	WithOffsetPagination(apiURL, nextPageToken)
+	headers, rateLimitDesc, err := c.doRequest(ctx, http.MethodGet, apiURL.String(), &users, nil)
+	if err != nil {
+		return nil, "", rateLimitDesc, err
+	}
+
+	return users, headers.Get("X-Next-Page"), rateLimitDesc, nil
 }
 
 func (c *GitlabClient) GetCurrentlyAuthenticatedUser(ctx context.Context) (*User, *v2.RateLimitDescription, error) {
