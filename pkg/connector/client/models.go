@@ -13,6 +13,7 @@ type User struct {
 	LastActivityOn  *ISOTime `json:"last_activity_on"`
 	MembershipState string   `json:"membership_state"`
 	Locked          bool     `json:"locked"`
+	Bot             bool     `json:"bot"`
 }
 
 type PendingInviteUser struct {

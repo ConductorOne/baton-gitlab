@@ -44,6 +44,42 @@ func (e *GitlabError) Message() string {
 	return "Unknown error from Gitlab API"
 }
 
+// emailTakenMessage is the message GitLab's create-user endpoint returns with
+// HTTP 409 when the email already belongs to a user (as primary or secondary email).
+const emailTakenMessage = "Email has already been taken"
+
+// APIError is returned for a request that got an HTTP error response. It keeps
+// the status and the GitLab error body so callers can classify specific provider
+// errors without parsing the formatted error text. Error and Unwrap are
+// unchanged from the plain wrapped error, so status.Code still works.
+type APIError struct {
+	StatusCode  int
+	gitlabError GitlabError
+	err         error
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("request failed: %s", e.err)
+}
+
+func (e *APIError) Unwrap() error {
+	return e.err
+}
+
+// IsEmailTakenConflict reports whether err is GitLab's 409 response for a
+// create-user request whose email already belongs to an existing user.
+func IsEmailTakenConflict(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusConflict {
+		return false
+	}
+	var message string
+	if json.Unmarshal(apiErr.gitlabError.Detail, &message) != nil {
+		return false
+	}
+	return message == emailTakenMessage
+}
+
 func (e *ErrorResponse) Error() string {
 	path, _ := url.QueryUnescape(e.Response.Request.URL.Path)
 	url := fmt.Sprintf("%s://%s%s", e.Response.Request.URL.Scheme, e.Response.Request.URL.Host, path)
